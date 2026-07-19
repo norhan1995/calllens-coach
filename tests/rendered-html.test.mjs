@@ -14,6 +14,7 @@ for (const [path, expected] of [
   ["/analyze", "Turn a conversation into clear coaching."],
   ["/practice", "Practice Role-play"],
   ["/sample-analysis", "Example output for interface exploration"],
+  ["/sample-audio-analysis", "Example output for interface exploration"],
   ["/report?example=1", "Maya delivered a calm, accurate resolution"],
 ]) {
   test(`server-renders ${path}`, async () => {
@@ -32,4 +33,14 @@ test("all live AI endpoints stop before an API call when the key is missing", as
     assert.equal(payload.error.code, "live_ai_not_configured", path);
     assert.equal(payload.error.message, "Live AI is not configured. Add OPENAI_API_KEY to .env.local.", path);
   }
+});
+
+test("AI status exposes configuration state without exposing a key", async () => {
+  const response = await request("/api/ai-status", { headers: { accept: "application/json" } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.transcriptionConfigured, false);
+  assert.equal(payload.transcriptionModel, "gpt-4o-transcribe-diarize");
+  assert.equal(payload.maxAudioFileMb, 25);
+  assert.equal("apiKey" in payload, false);
 });

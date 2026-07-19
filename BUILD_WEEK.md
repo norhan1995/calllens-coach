@@ -18,9 +18,11 @@
 
 ### Audio and language
 
-- Made Upload Audio functional with type, size, and empty-file validation.
-- Added source-language transcription architecture and capability-aware segments.
-- Added visible processing stages from upload through coaching-plan construction.
+- Upgraded Upload Audio into a drag/drop workspace for nine OpenAI-supported formats with configurable size checks and browser readability validation.
+- Prepared secure `gpt-4o-transcribe-diarize` architecture with `diarized_json`, automatic chunking, strict response normalization, and a no-secret configuration-status route.
+- Added local playback, six honest progress stages, cancel/retry controls, suggested speaker mapping, and timestamped transcript review/edit/export.
+- Added deterministic talk, speed, silence, dead-air, overlap, potential-interruption, and English/Arabic filler metrics with clickable evidence.
+- Added the isolated `/sample-audio-analysis` judge experience and future validated emotion/dialect/code-switching placeholders.
 - Added Egyptian, Gulf, MSA, Levantine, English, and mixed-language selection with RTL content logic.
 
 ### Results and coaching

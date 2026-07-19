@@ -2,20 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   LIVE_AI_MISSING_MESSAGE,
   analysisResponseSchema,
   isRtlContent,
   qaScorecardSchema,
   rolePlayResponseSchema,
-  transcriptionOutputSchema,
-  validateAudioFile,
   type AnalysisResponse,
   type PrivacySummary,
   type RolePlayResponse,
   type RolePlaySetup,
 } from "./lib/domain";
+import { AudioWorkspace, SampleAudioAnalysis } from "./audio-workspace";
+import { audioMetricSettingsSchema, type AudioMetrics, type DiarizedTranscriptionResult, type SpeakerMappingEntry } from "./lib/audio-domain";
 import { SAMPLE_ANALYSIS, SAMPLE_PRIVACY } from "./lib/sample-analysis";
 import { useCallLensState, type CallMetadata, type DemoSettings } from "./state";
 
@@ -52,14 +52,15 @@ async function responseError(response: Response) {
   }
 }
 
-export function CallLensApp({ page, example = false }: { page: Page; example?: boolean }) {
+export function CallLensApp({ page, example = false, audioExample = false }: { page: Page; example?: boolean; audioExample?: boolean }) {
   return <div className="app-shell"><Sidebar page={page} /><main><AppHeader page={page} />
-    {page === "dashboard" && <Dashboard />}
-    {page === "analyze" && <Analyze />}
-    {page === "results" && <Results example={example} />}
-    {page === "coaching" && <Coaching />}
-    {page === "practice" && <Practice />}
-    {page === "settings" && <Settings />}
+    {audioExample && <SampleAudioAnalysis />}
+    {!audioExample && page === "dashboard" && <Dashboard />}
+    {!audioExample && page === "analyze" && <Analyze />}
+    {!audioExample && page === "results" && <Results example={example} />}
+    {!audioExample && page === "coaching" && <Coaching />}
+    {!audioExample && page === "practice" && <Practice />}
+    {!audioExample && page === "settings" && <Settings />}
   </main></div>;
 }
 
@@ -94,32 +95,28 @@ function Analyze() {
   const router = useRouter();
   const { state, settings, updateState, updateMetadata, setAnalysisResult } = useCallLensState();
   const [inputMode, setInputMode] = useState<"transcript" | "audio">("transcript");
-  const [audioFile, setAudioFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState(-1);
-  const fileRef = useRef<HTMLInputElement>(null);
   const scorecard = settings.scorecards.find((item) => item.id === settings.selectedScorecardId) ?? settings.scorecards[0];
 
   function loadSample(kind: "English" | "Arabic") {
-    updateState({ transcript: samples[kind], transcription: null });
+    updateState({ transcript: samples[kind], transcription: null, speakerMapping: [], audioMetrics: null });
     updateMetadata({ selectedLanguage: kind, selectedDialect: kind === "Arabic" ? "Auto Detect" : "English" });
-    setInputMode("transcript"); setAudioFile(null); setError("");
+    setInputMode("transcript"); setError("");
   }
 
-  function selectFile(file: File | null) {
-    if (!file) return;
-    const issue = validateAudioFile(file);
-    if (issue) { setAudioFile(null); setError(issue); return; }
-    setAudioFile(file); setError(""); setInputMode("audio");
-  }
-
-  async function analyzeTranscript(transcript: string, segments?: Array<{start:number|null;end:number|null;speaker:string;text:string}>) {
+  async function analyzeTranscript(
+    transcript: string,
+    segments?: Array<{start:number|null;end:number|null;speaker:string;text:string}>,
+    speakerMapping?: SpeakerMappingEntry[],
+    audioMetrics?: AudioMetrics,
+  ) {
     setStage(3);
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json", "x-calllens-request-id": requestId() },
-      body: JSON.stringify({ transcript, ...state.metadata, scorecard, segments, maskSensitiveInformation: settings.maskSensitiveInformation }),
+      body: JSON.stringify({ transcript, ...state.metadata, scorecard, segments, speakerMapping, audioMetrics, maskSensitiveInformation: settings.maskSensitiveInformation }),
     });
     if (!response.ok) throw new Error(await responseError(response));
     const payload = await response.json() as { analysis?: unknown; privacy?: unknown };
@@ -133,43 +130,39 @@ function Analyze() {
 
   async function runAnalysis() {
     if (busy) return;
-    if (inputMode === "transcript" && state.transcript.trim().length < 80) { setError("Add at least 80 characters of conversation for a reliable analysis."); return; }
-    if (inputMode === "audio" && !audioFile) { setError("Choose an audio recording before analyzing."); return; }
+    if (state.transcript.trim().length < 80) { setError("Add at least 80 characters of conversation for a reliable analysis."); return; }
     if (!scorecard || !qaScorecardSchema.safeParse(scorecard).success) { setError("The selected QA scorecard weights must total 100%."); return; }
     setBusy(true); setError("");
     try {
-      if (inputMode === "audio" && audioFile) {
-        setStage(0);
-        const form = new FormData(); form.set("audio", audioFile);
-        setStage(1);
-        const response = await fetch("/api/transcribe", { method: "POST", headers: { "x-calllens-request-id": requestId() }, body: form });
-        if (!response.ok) throw new Error(await responseError(response));
-        setStage(2);
-        const payload = await response.json() as { transcription?: unknown };
-        const parsed = transcriptionOutputSchema.safeParse(payload.transcription);
-        if (!parsed.success) throw new Error("Live transcription returned an invalid response. Nothing was displayed.");
-        updateState({ transcript: parsed.data.transcript, transcription: parsed.data });
-        await analyzeTranscript(parsed.data.transcript, parsed.data.segments);
-      } else {
-        await analyzeTranscript(state.transcript);
-      }
+      await analyzeTranscript(state.transcript);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The analysis could not be completed.");
       setStage(-1);
     } finally { setBusy(false); }
   }
 
+  async function continueAudioAnalysis(result: DiarizedTranscriptionResult, mapping: SpeakerMappingEntry[], metrics: AudioMetrics) {
+    if (!scorecard || !qaScorecardSchema.safeParse(scorecard).success) throw new Error("The selected QA scorecard weights must total 100%.");
+    const segments = result.segments.map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      speaker: segment.role === "unknown" ? segment.speakerId : segment.role === "agent" ? "Agent" : "Customer",
+      text: segment.text,
+    }));
+    await analyzeTranscript(result.text, segments, mapping, metrics);
+  }
+
   const rtl = isRtlContent(state.metadata.selectedDialect, state.transcript);
   return <section className="content narrow"><div className="page-intro"><span className="eyebrow accent">NEW LIVE ANALYSIS</span><h1>Turn a conversation into clear coaching.</h1><p>Paste a transcript or securely upload a recording. No AI call is attempted until a server-side key is configured.</p></div>
-    <div className="analyze-grid"><div className="panel form-card"><div className="step-title"><span>1</span><div><h2>Add your call</h2><p>Choose one input method</p></div></div>
+    {inputMode === "audio" && <div className="audio-workspace-standalone"><AudioWorkspace onContinue={continueAudioAnalysis} /></div>}
+    <div className={`analyze-grid ${inputMode === "audio" ? "audio-mode" : ""}`}><div className="panel form-card"><div className="step-title"><span>1</span><div><h2>Add your call</h2><p>Choose one input method</p></div></div>
       <div className="tabs"><button className={inputMode === "transcript" ? "selected" : ""} onClick={()=>setInputMode("transcript")}>▤ Paste transcript</button><button className={inputMode === "audio" ? "selected" : ""} onClick={()=>setInputMode("audio")}>◉ Upload audio</button></div>
-      {inputMode === "transcript" ? <><div className="sample-row"><label>CALL TRANSCRIPT</label><span>Try a sample: <button onClick={()=>loadSample("English")}>English</button><button onClick={()=>loadSample("Arabic")}>العربية</button></span></div><textarea value={state.transcript} onChange={(event)=>updateState({transcript:event.target.value})} placeholder="Agent: Thank you for calling…\nCustomer: Hi, I need help with…" dir={rtl ? "rtl" : "auto"}/><small className="counter">{state.transcript.length.toLocaleString()} characters</small></> :
-        <div className="upload-zone" onClick={()=>fileRef.current?.click()}><input ref={fileRef} type="file" accept=".mp3,.wav,.m4a,.mp4,.ogg,.webm,.flac" onChange={(event)=>selectFile(event.target.files?.[0] ?? null)}/>{audioFile ? <><span className="upload-icon ready">✓</span><b>{audioFile.name}</b><small>{(audioFile.size/1024/1024).toFixed(2)} MB · ready to upload securely</small><button onClick={(event)=>{event.stopPropagation();setAudioFile(null);}}>Remove</button></> : <><span className="upload-icon">↑</span><b>Choose an audio recording</b><small>MP3, WAV, M4A, MP4, OGG, WebM, or FLAC · maximum 25 MB</small></>}</div>}
+      {inputMode === "transcript" ? <><div className="sample-row"><label>CALL TRANSCRIPT</label><span>Try a sample: <button onClick={()=>loadSample("English")}>English</button><button onClick={()=>loadSample("Arabic")}>العربية</button></span></div><textarea value={state.transcript} onChange={(event)=>updateState({transcript:event.target.value})} placeholder="Agent: Thank you for calling…\nCustomer: Hi, I need help with…" dir={rtl ? "rtl" : "auto"}/><small className="counter">{state.transcript.length.toLocaleString()} characters</small></> : null}
     </div>
     <div className="panel setup-card"><div className="step-title"><span>2</span><div><h2>Analysis setup</h2><p>Help CallLens interpret the conversation</p></div></div><label>AGENT NAME</label><input className="full-input" value={state.metadata.agentName} onChange={(event)=>updateMetadata({agentName:event.target.value})}/><label>LANGUAGE</label><div className="segmented">{(["Auto Detect","English","Arabic"] as const).map((value)=><button key={value} onClick={()=>updateMetadata({selectedLanguage:value})} className={state.metadata.selectedLanguage===value?"selected":""}>{value === "Arabic" ? "العربية" : value}</button>)}</div><label>ARABIC DIALECT</label><select value={state.metadata.selectedDialect} onChange={(event)=>updateMetadata({selectedDialect:event.target.value as CallMetadata["selectedDialect"]})}>{DIALECTS.map((value)=><option key={value}>{value}</option>)}</select><label>CALL TYPE</label><select value={state.metadata.callType} onChange={(event)=>updateMetadata({callType:event.target.value})}>{CALL_TYPES.map((value)=><option key={value}>{value}</option>)}</select><div className="scorecard-chip"><small>ACTIVE QA SCORECARD</small><b>{scorecard?.name}</b><Link href="/settings">Edit weights</Link></div><div className="privacy"><span>◈</span><p><b>{settings.maskSensitiveInformation ? "Privacy masking is on" : "Privacy masking is off"}</b><br/>{settings.maskSensitiveInformation ? "Sensitive patterns are masked on the server before live analysis." : "The transcript will be sent without masking."}</p></div></div></div>
-    <p className="privacy-notice">Privacy detection is not perfect. Avoid uploading confidential production data during the hackathon demo.</p>
-    {busy && <ProgressStages current={stage} audio={inputMode === "audio"}/>} {error && <div className="error" role="alert">⚠ <span><b>We couldn’t complete the request</b><br/>{error}</span></div>}
-    <button className="analyze-button" onClick={runAnalysis} disabled={busy}>{busy ? <><i/>Working securely…</> : <>✦ Analyze call <span>Live AI required</span></>}</button>
+    {inputMode === "transcript" && <><p className="privacy-notice">Privacy detection is not perfect. Avoid uploading confidential production data during the hackathon demo.</p>
+    {busy && <ProgressStages current={stage} audio={false}/>} {error && <div className="error" role="alert">⚠ <span><b>We couldn’t complete the request</b><br/>{error}</span></div>}
+    <button className="analyze-button" onClick={runAnalysis} disabled={busy}>{busy ? <><i/>Working securely…</> : <>✦ Analyze call <span>Live AI required</span></>}</button></>}
   </section>;
 }
 
@@ -238,11 +231,20 @@ function FieldSelect({label,value,values,onChange}:{label:string;value:string;va
 function RolePlayFeedback({feedback}:{feedback:RolePlayResponse}) { return <div className="panel feedback-panel"><span className="eyebrow">COACH FEEDBACK</span>{feedback.rolePlayScore!==null&&<div className="feedback-score"><b>{feedback.rolePlayScore}</b><span>/100</span></div>}<p>{feedback.feedbackSummary}</p><h3>Strengths</h3><ul>{feedback.strengths.map((item)=><li key={item}>{item}</li>)}</ul><h3>Mistakes</h3><ul>{feedback.mistakes.map((item)=><li key={item}>{item}</li>)}</ul>{feedback.betterReply&&<div className="practice"><b>Better reply</b><p dir="auto">{feedback.betterReply}</p></div>}{feedback.categoryFeedback.map((item)=><div className="category-feedback" key={item.category}><b>{item.category}</b><p>{item.feedback}</p></div>)}{feedback.recommendedNextPractice&&<p><b>Next practice:</b> {feedback.recommendedNextPractice}</p>}{feedback.improvementComparedWithAnalyzedCall&&<p><b>Compared with analyzed call:</b> {feedback.improvementComparedWithAnalyzedCall}</p>}</div>; }
 
 function Settings() {
-  const {settings,updateSettings}=useCallLensState(); const [draft,setDraft]=useState<DemoSettings>(()=>structuredClone(settings)); const [notice,setNotice]=useState(""); const [error,setError]=useState("");
+  const {settings,updateSettings}=useCallLensState();
+  return <SettingsForm key={JSON.stringify(settings)} settings={settings} updateSettings={updateSettings}/>;
+}
+
+function SettingsForm({settings,updateSettings}:{settings:DemoSettings;updateSettings:(settings:DemoSettings)=>void}) {
+  const [draft,setDraft]=useState<DemoSettings>(()=>structuredClone(settings)); const [notice,setNotice]=useState(""); const [error,setError]=useState("");
+  const [englishFillers,setEnglishFillers]=useState(()=>settings.audio.englishFillerWords.join("\n")); const [egyptianFillers,setEgyptianFillers]=useState(()=>settings.audio.egyptianFillerWords.join("\n")); const [gulfFillers,setGulfFillers]=useState(()=>settings.audio.gulfFillerWords.join("\n"));
   const selected=draft.scorecards.find((item)=>item.id===draft.selectedScorecardId)??draft.scorecards[0]; const total=selected.categories.reduce((sum,item)=>sum+item.weight,0);
   function changeWeight(id:string,weight:number){setDraft({...draft,scorecards:draft.scorecards.map((card)=>card.id===selected.id?{...card,categories:card.categories.map((category)=>category.id===id?{...category,weight}:category)}:card)});setNotice("");}
-  function save(){const invalid=draft.scorecards.find((card)=>!qaScorecardSchema.safeParse(card).success);if(invalid){setError(`${invalid.name} weights must total 100%.`);return;}updateSettings(draft);setError("");setNotice("Settings saved locally on this device.");}
+  function updateAudio(patch:Partial<DemoSettings["audio"]>){setDraft({...draft,audio:{...draft.audio,...patch}});setNotice("");}
+  function parseFillerList(value:string){return value.split(/[\n,]/).map((item)=>item.trim()).filter(Boolean);}
+  function save(){const invalid=draft.scorecards.find((card)=>!qaScorecardSchema.safeParse(card).success);if(invalid){setError(`${invalid.name} weights must total 100%.`);return;}const normalized={...draft,audio:{...draft.audio,englishFillerWords:parseFillerList(englishFillers),egyptianFillerWords:parseFillerList(egyptianFillers),gulfFillerWords:parseFillerList(gulfFillers)}};const {playbackSpeed,autoScrollTranscript,...metricSettings}=normalized.audio;const supportedSpeed=[0.75,1,1.25,1.5,2].includes(playbackSpeed);if(!audioMetricSettingsSchema.safeParse(metricSettings).success||!supportedSpeed||typeof autoScrollTranscript!=="boolean"){setError("Check audio thresholds and filler dictionaries. Severe dead air must exceed possible dead air.");return;}setDraft(normalized);updateSettings(normalized);setError("");setNotice("Settings saved locally on this device.");}
   return <section className="content narrow"><div className="page-intro"><span className="eyebrow accent">WORKSPACE PREFERENCES</span><h1>Settings</h1><p>Configure privacy and QA scorecards without storing credentials or call data.</p></div>{notice&&<div className="success">✓ {notice}</div>}{error&&<div className="error">⚠ {error}</div>}<div className="settings-layout"><div className="panel settings-card"><h2>General</h2><div className="setting-row"><div><b>Workspace name</b><small>Shown throughout the quality dashboard</small></div><input value={draft.workspaceName} onChange={(event)=>setDraft({...draft,workspaceName:event.target.value})}/></div><div className="setting-row"><div><b>Default language</b><small>Used when starting a new analysis</small></div><select value={draft.defaultLanguage} onChange={(event)=>setDraft({...draft,defaultLanguage:event.target.value as DemoSettings["defaultLanguage"]})}><option>Auto Detect</option><option>English</option><option>Arabic</option></select></div><div className="setting-row"><div><b>Mask sensitive information before AI analysis</b><small>Enabled by default; applies server-side before the transcript reaches OpenAI</small></div><Toggle on={draft.maskSensitiveInformation} onChange={(value)=>setDraft({...draft,maskSensitiveInformation:value})} label="Mask sensitive information"/></div><p className="privacy-notice in-card">Automated masking is not perfect. Avoid confidential production data during the hackathon demo.</p></div>
+      <div className="panel audio-settings"><div className="panel-head"><div><span className="eyebrow">AUDIO ANALYSIS</span><h2>Deterministic metrics and playback</h2></div><small>Stored locally; no call content or credentials</small></div><div className="audio-setting-grid"><label><span>Possible dead-air threshold</span><input type="number" min="0.5" step="0.1" value={draft.audio.deadAirSeconds} onChange={(event)=>updateAudio({deadAirSeconds:Number(event.target.value)})}/><em>seconds</em></label><label><span>Severe dead-air threshold</span><input type="number" min="1" step="0.1" value={draft.audio.severeDeadAirSeconds} onChange={(event)=>updateAudio({severeDeadAirSeconds:Number(event.target.value)})}/><em>seconds</em></label><label><span>Minimum interruption overlap</span><input type="number" min="0.05" step="0.05" value={draft.audio.minimumInterruptionOverlapSeconds} onChange={(event)=>updateAudio({minimumInterruptionOverlapSeconds:Number(event.target.value)})}/><em>seconds</em></label><label><span>Default playback speed</span><select value={draft.audio.playbackSpeed} onChange={(event)=>updateAudio({playbackSpeed:Number(event.target.value) as DemoSettings["audio"]["playbackSpeed"]})}>{[0.75,1,1.25,1.5,2].map((speed)=><option key={speed} value={speed}>{speed}x</option>)}</select></label></div><div className="filler-settings"><label>English filler words<textarea value={englishFillers} onChange={(event)=>setEnglishFillers(event.target.value)}/></label><label>Egyptian Arabic filler words<textarea dir="rtl" value={egyptianFillers} onChange={(event)=>setEgyptianFillers(event.target.value)}/></label><label>Gulf Arabic filler words<textarea dir="rtl" value={gulfFillers} onChange={(event)=>setGulfFillers(event.target.value)}/></label></div><div className="setting-row"><div><b>Auto-scroll timestamped transcript</b><small>Default behavior while audio is playing</small></div><Toggle on={draft.audio.autoScrollTranscript} onChange={(value)=>updateAudio({autoScrollTranscript:value})} label="Auto-scroll timestamped transcript"/></div></div>
       <div className="panel scorecard-settings"><div className="panel-head"><div><span className="eyebrow">QA SCORECARDS</span><h2>Configurable category weights</h2></div><select value={selected.id} onChange={(event)=>setDraft({...draft,selectedScorecardId:event.target.value})}>{draft.scorecards.map((card)=><option value={card.id} key={card.id}>{card.name}</option>)}</select></div><div className="weight-total"><span>Total weight</span><b className={Math.abs(total-100)<.001?"valid":"invalid"}>{total}%</b></div><div className="weight-list">{selected.categories.map((category)=><label key={category.id}><span>{category.label}</span><div><input type="number" min="0" max="100" step="1" value={category.weight} onChange={(event)=>changeWeight(category.id,Number(event.target.value))}/><em>%</em></div></label>)}</div>{Math.abs(total-100)>.001&&<p className="inline-error">Adjust this scorecard to exactly 100% before saving.</p>}</div></div><button className="primary save" onClick={save}>Save changes</button></section>;
 }
 

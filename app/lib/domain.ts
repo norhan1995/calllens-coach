@@ -1,4 +1,16 @@
 import { z } from "zod";
+import {
+  audioMetricsSchema,
+  diarizedTranscriptionResultSchema,
+  speakerMappingSchema,
+  type DiarizedTranscriptionResult,
+} from "./audio-domain.ts";
+
+export {
+  DEFAULT_MAX_AUDIO_BYTES as MAX_AUDIO_BYTES,
+  SUPPORTED_AUDIO_EXTENSIONS,
+  validateAudioFile,
+} from "./audio-domain.ts";
 
 export const LIVE_AI_MISSING_MESSAGE =
   "Live AI is not configured. Add OPENAI_API_KEY to .env.local.";
@@ -63,6 +75,8 @@ export const analysisRequestSchema = z.object({
   selectedDialect: dialectSchema,
   scorecard: qaScorecardSchema,
   segments: z.array(transcriptSegmentSchema).max(5_000).optional(),
+  speakerMapping: speakerMappingSchema.optional(),
+  audioMetrics: audioMetricsSchema.optional(),
   maskSensitiveInformation: z.boolean().default(true),
 });
 
@@ -167,14 +181,7 @@ export const privacySummarySchema = z.object({
   types: z.array(z.enum(["email", "phone", "payment card", "customer ID", "account number", "patient identifier"])),
 });
 
-export const transcriptionOutputSchema = z.object({
-  transcript: z.string().min(1),
-  detectedLanguage: z.string().nullable(),
-  durationSeconds: z.number().min(0),
-  durationSource: z.enum(["audio", "processing"]),
-  segments: z.array(transcriptSegmentSchema),
-  fileName: z.string().min(1),
-});
+export const transcriptionOutputSchema = diarizedTranscriptionResultSchema;
 
 export const rolePlaySetupSchema = z.object({
   scenarioType: z.enum([
@@ -215,7 +222,7 @@ export type AnalysisRequest = z.infer<typeof analysisRequestSchema>;
 export type AnalysisResponse = z.infer<typeof analysisResponseSchema>;
 export type PrivacySummary = z.infer<typeof privacySummarySchema>;
 export type QAScorecard = z.infer<typeof qaScorecardSchema>;
-export type TranscriptionOutput = z.infer<typeof transcriptionOutputSchema>;
+export type TranscriptionOutput = DiarizedTranscriptionResult;
 export type RolePlaySetup = z.infer<typeof rolePlaySetupSchema>;
 export type RolePlayResponse = z.infer<typeof rolePlayResponseSchema>;
 
@@ -302,19 +309,6 @@ export function maskSensitiveInformation(transcript: string, enabled = true) {
     transcript: output,
     summary: { detectedCount, maskedCount, types: [...types] } satisfies PrivacySummary,
   };
-}
-
-export const SUPPORTED_AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "ogg", "webm", "flac"] as const;
-export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-
-export function validateAudioFile(file: { name: string; size: number; type?: string }) {
-  if (file.size <= 0) return "The selected audio file is empty.";
-  if (file.size > MAX_AUDIO_BYTES) return "Audio files must be 25 MB or smaller.";
-  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!SUPPORTED_AUDIO_EXTENSIONS.includes(extension as (typeof SUPPORTED_AUDIO_EXTENSIONS)[number])) {
-    return "Use an MP3, WAV, M4A, MP4, OGG, WebM, or FLAC file.";
-  }
-  return null;
 }
 
 export function isRtlContent(language: string, text = "") {

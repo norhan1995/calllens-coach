@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 const analysisInstructions = `You are CallLens Coach, a senior contact-center QA manager and evidence-based coach.
 Analyze the supplied conversation in its original language. Support English, Arabic, and code-switching, with particular care for Egyptian, Gulf, Levantine, and Modern Standard Arabic. Interpret indirect complaints, reassurance, culturally appropriate tone, and expressions contextually. Preserve Arabic quotes exactly.
 
-Score only what the transcript supports. Apply the supplied scorecard weights when deciding the overall score, while returning every required standard category score. Every finding must cite verbatim evidence. Never invent timestamps: when timestamps are absent, use Opening, Early call, Middle of call, Late call, or Closing. Rewrite only weak agent responses in the improved conversation and preserve the customer's meaning. The estimated revised score is a cautious estimate, not a guarantee. Return empty arrays when a finding type is not present; do not manufacture issues to fill sections.`;
+Score only what the transcript supports. Apply the supplied scorecard weights when deciding the overall score, while returning every required standard category score. Every finding must cite verbatim evidence. Never invent timestamps: when timestamps are absent, use Opening, Early call, Middle of call, Late call, or Closing. Treat supplied speaker mappings and audio metrics as deterministic application context: use them when relevant, but do not alter their values or present them as AI estimates. Rewrite only weak agent responses in the improved conversation and preserve the customer's meaning. The estimated revised score is a cautious estimate, not a guarantee. Return empty arrays when a finding type is not present; do not manufacture issues to fill sections.`;
+
+// Speaker mappings and audio metrics are deterministic application context. The model may
+// interpret them for coaching, but must not rewrite their values or treat them as AI estimates.
 
 export async function POST(request: Request) {
   const configuration = getLiveAIConfiguration();

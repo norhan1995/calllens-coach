@@ -53,7 +53,7 @@ test("audio validation covers empty, oversized, unsupported, and accepted files"
   assert.equal(validateAudioFile({ name: "call.mp3", size: 0 }), "The selected audio file is empty.");
   assert.equal(validateAudioFile({ name: "call.wav", size: MAX_AUDIO_BYTES + 1 }), "Audio files must be 25 MB or smaller.");
   assert.match(validateAudioFile({ name: "call.txt", size: 100 }) ?? "", /MP3/);
-  for (const extension of ["mp3", "wav", "m4a", "mp4", "ogg", "webm", "flac"]) {
+  for (const extension of ["mp3", "wav", "m4a", "mp4", "mpeg", "mpga", "ogg", "webm", "flac"]) {
     assert.equal(validateAudioFile({ name: `call.${extension}`, size: 1024 }), null);
   }
 });

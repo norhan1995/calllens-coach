@@ -46,7 +46,9 @@ Select **Print / Save as PDF** if the demo environment allows the browser print 
 
 ## 2:35–3:00 — Honest live architecture
 
-Open **Analyze Call**. Load the Arabic sample, show automatic RTL, dialect selection, active scorecard, and privacy masking. Switch to Upload Audio and point out supported formats and progress stages.
+Open **Analyze Call**. Load the Arabic sample, show automatic RTL, dialect selection, active scorecard, and privacy masking. Switch to Upload Audio and show drag/drop, the local player, supported formats, six honest progress stages, and the **View sample audio analysis** link.
+
+Open the sample audio analysis and point out the prominent example-only banner, speaker mapping, timestamped evidence rows, talk balance, possible dead air, neutral overlap wording, and filler evidence. Emphasize that the fixed fixture is not connected to any upload.
 
 Select **Analyze call** with no key configured.
 

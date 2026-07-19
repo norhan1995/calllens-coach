@@ -38,9 +38,10 @@ The OpenAI SDK is imported only by server routes. `OPENAI_API_KEY` is never read
 
 - `/welcome` — public product landing page.
 - `/` — existing QA dashboard.
-- `/analyze` — transcript samples, pasted transcripts, validated audio upload, language/dialect selection, scorecard context, and privacy status.
+- `/analyze` — pasted transcripts plus a professional audio workspace with local playback, secure upload preparation, speaker mapping, timestamped review, editing, export, and deterministic metrics.
 - `/results` — current validated live analysis with category scores, evidence, dialect insight, critical moments, reconstruction, and improved phrases.
 - `/sample-analysis` — clearly labeled example output for interface exploration; never represented as a live result.
+- `/sample-audio-analysis` — clearly labeled, upload-isolated example of speaker-separated transcript and audio insights; never represented as the current recording.
 - `/coaching` — evidence-based priorities, customer follow-up message, and seven-day plan.
 - `/practice` — configurable role-play setup, turn-by-turn customer simulation, feedback, and final assessment.
 - `/settings` — local workspace preferences, privacy masking, and four configurable QA scorecards.
@@ -63,7 +64,8 @@ Copy `.env.example` to `.env.local`:
 ```bash
 OPENAI_API_KEY=
 OPENAI_ANALYSIS_MODEL=gpt-5.6-terra
-OPENAI_TRANSCRIPTION_MODEL=gpt-4o-transcribe
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-transcribe-diarize
+MAX_AUDIO_FILE_MB=25
 ```
 
 `.env.local` and all other `.env*` files are ignored by Git, while `.env.example` is committed. Never expose the key through a `NEXT_PUBLIC_` variable.
@@ -82,16 +84,31 @@ The output schema validates 0–100 overall and category scores, detected langua
 
 Every strength, mistake, warning, missed opportunity, and coaching recommendation must include evidence with a verbatim quote, speaker, explanation, optional timestamp/position, and scoring category. Invalid output is rejected before it reaches application state.
 
-## Transcription flow
+## Diarized audio workflow
 
-The browser validates non-empty MP3, WAV, M4A, MP4, OGG, WebM, and FLAC files up to 25 MB. Audio is held only in memory and sent to `/api/transcribe`. The server validates it again, calls the configured transcription model, and returns:
+The browser accepts MP3, WAV, M4A, MP4, MPEG, MPGA, OGG, WebM, and FLAC. It rejects empty, unsupported, oversized, and browser-detectable unreadable files. The maximum defaults to 25 MB and is controlled by `MAX_AUDIO_FILE_MB`. Raw audio is held only in temporary component state, object URLs are revoked on replacement/removal/unmount, and nothing is written to local or session storage.
 
-- the original-language transcript;
-- detected language when the model supplies it;
-- audio duration when supplied, otherwise clearly typed processing duration;
-- timestamped segments when the selected model/format supplies them.
+After local validation, the workspace provides play/pause, seek, five-second skip controls, volume, and 0.75–2x playback. Its six progress stages distinguish local preparation from live work. With no key, only **Validating audio** and **Preparing secure upload** can complete; clicking Transcribe shows the exact missing-configuration message and does not call `/api/transcribe` or create a result.
 
-The UI reports Uploading, Transcribing, Detecting speakers and language, Analyzing quality, and Building coaching plan. It never invents speaker labels or timestamps.
+When configured, the server revalidates the multipart file and uses the official SDK with the environment-selected `gpt-4o-transcribe-diarize` model, `response_format: "diarized_json"`, and `chunking_strategy: "auto"`. The strict normalized schema requires non-empty source-language text, unique and ordered segment IDs, valid speaker IDs/roles/timestamps, and duration covering the final segment. Malformed provider output is rejected before application state.
+
+The first two detected speakers receive a clearly labeled suggested mapping of Agent and Customer. A reviewer can map every speaker to Agent, Customer, or Other/Unknown without changing the original provider `speakerId`. No identity is inferred from gender, accent, or voice characteristics.
+
+The timestamped viewer seeks playback by row, highlights the active segment, supports auto-scroll, role filters, search, quote/full-transcript copy, and TXT/JSON exports. Corrections preserve `originalText`, store `editedText`, show an Edited badge, retain timestamps, support session undo, and trigger deterministic metric recalculation.
+
+Audio Insights are calculated in application code, never by an AI model: speaking duration/percentage, talk ratio, approximate word count and speaking speed, silence/dead air, overlaps, potential interruptions, and editable English/Egyptian/Gulf filler dictionaries with evidence segment IDs. Arabic word counting is approximate. Overlap-based interruption labels do not claim intent or rudeness.
+
+After live transcription and mapping, **Continue to QA analysis** passes the normalized transcript, segments, mapping, metadata, scorecard, language/dialect choices, privacy preference, and deterministic metrics to the existing analysis route. Server-side masking affects only the transcript sent to the analysis model; the original local transcript remains unchanged.
+
+## API-key-last setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Leave `OPENAI_TRANSCRIPTION_MODEL=gpt-4o-transcribe-diarize` and `MAX_AUDIO_FILE_MB=25`, or adjust the size limit for your deployment.
+3. Add the server-side value `OPENAI_API_KEY=your_key_here`. Never use a `NEXT_PUBLIC_` prefix.
+4. Restart `pnpm dev` so the server reads the environment.
+5. Select a non-confidential test recording, confirm speaker mapping, then continue to QA analysis.
+
+No key was configured and no paid API request was made during this implementation.
 
 ## Arabic dialect support
 
@@ -132,12 +149,12 @@ pnpm test
 pnpm build
 ```
 
-Unit coverage includes schemas, score bounds, 100% rubric totals, malformed response rejection, masking, file validation, Arabic RTL logic, state mapping, and report data. The built-worker suite renders key routes and verifies that every AI route returns the missing-key response before attempting a live call. See [TESTING.md](./TESTING.md) for manual QA.
+Unit coverage includes analysis/audio schemas, score bounds, 100% rubric totals, malformed-response and no-fake-result rejection, masking, every audio format/error class, speaker mapping, word/speed/talk/silence/overlap/interruption/filler metrics, edits/undo, object URL cleanup, evidence references, Arabic RTL logic, state mapping, and report data. The built-worker suite renders key routes, verifies the non-secret AI status, and confirms that every AI POST route returns the missing-key response before attempting a live call. See [TESTING.md](./TESTING.md) for manual QA.
 
 ## Deployment
 
 1. Run the complete checks above.
-2. Configure `OPENAI_API_KEY`, `OPENAI_ANALYSIS_MODEL`, and `OPENAI_TRANSCRIPTION_MODEL` as server-side runtime variables in the hosting environment.
+2. Configure `OPENAI_API_KEY`, `OPENAI_ANALYSIS_MODEL`, `OPENAI_TRANSCRIPTION_MODEL`, and `MAX_AUDIO_FILE_MB` as server-side runtime variables in the hosting environment.
 3. Build the Cloudflare-compatible output with `pnpm build`.
 4. Publish the validated source/build through OpenAI Sites. Do not place secrets in `.openai/hosting.json`; that file stores only Sites resource bindings.
 
@@ -150,7 +167,10 @@ Use [DEMO_SCRIPT.md](./DEMO_SCRIPT.md). The safest judge flow is: open `/welcome
 ## Known limitations
 
 - Live analysis, transcription, and role-play require `OPENAI_API_KEY`; paid API calls were not run during this build.
-- Audio speaker/timestamp segments appear only when the configured transcription model returns them.
+- Live audio transcription depends on access to `gpt-4o-transcribe-diarize`; this build was validated without making a paid transcription request.
+- Browser decoders vary, so some valid containers/codecs may be rejected locally as unreadable even when the file extension is supported.
+- Talk and overlap percentages are timestamp-derived; overlapping speaker time can make raw per-speaker durations exceed unique speech time.
+- Arabic word counts and filler matching are practical approximations and should be calibrated with representative calls.
 - Privacy masking may miss or over-match sensitive values and is not a substitute for a production DLP review.
 - Call state is intentionally in memory; a hard refresh clears sensitive working data.
 - Settings persist only on the current device. There is no authentication, team database, or historical call store yet.
@@ -163,7 +183,7 @@ Codex audited the existing single-component application, preserved its design la
 
 ## How GPT-5.6 powers the final live experience
 
-`gpt-5.6-terra` is the default analysis model because it balances quality and cost for structured multilingual QA. It will power validated transcript analysis and role-play through the Responses API. `gpt-4o-transcribe` handles source-language audio transcription. The model names remain environment-configurable so deployment can adapt to model access and evaluated quality without client changes.
+`gpt-5.6-terra` is the default analysis model because it balances quality and cost for structured multilingual QA. It will power validated transcript analysis and role-play through the Responses API. `gpt-4o-transcribe-diarize` is prepared for source-language transcription with speaker annotations and timestamps. The model names remain environment-configurable so deployment can adapt to model access and evaluated quality without client changes.
 
 ## Build Week work completed
 

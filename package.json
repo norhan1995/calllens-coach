@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "type-check": "tsc --noEmit",
-    "test:unit": "node --experimental-strip-types --test tests/domain.test.ts",
+    "test:unit": "node --experimental-strip-types --test tests/domain.test.ts tests/audio-domain.test.ts",
     "test": "pnpm run test:unit && pnpm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

@@ -1,14 +1,7 @@
 import { getLiveAIConfiguration, getOpenAIClient, missingKeyResponse, runOnce, safeApiErrorResponse } from "../../lib/openai-server";
-import { transcriptSegmentSchema, validateAudioFile } from "../../lib/domain";
+import { normalizeProviderDiarizedTranscription, validateAudioFile } from "../../lib/audio-domain";
 
 export const runtime = "nodejs";
-
-type RawTranscription = {
-  text?: string;
-  language?: string;
-  duration?: number;
-  segments?: Array<{ start?: number; end?: number; speaker?: string; text?: string }>;
-};
 
 export async function POST(request: Request) {
   const configuration = getLiveAIConfiguration();
@@ -24,44 +17,34 @@ export async function POST(request: Request) {
   if (!(value instanceof File)) {
     return Response.json({ error: { code: "missing_file", message: "Choose an audio file to transcribe." } }, { status: 400 });
   }
-  const validationError = validateAudioFile(value);
+  const validationError = validateAudioFile(value, configuration.maxAudioFileMb * 1024 * 1024);
   if (validationError) {
     return Response.json({ error: { code: "invalid_file", message: validationError } }, { status: 400 });
   }
 
   const client = getOpenAIClient();
   if (!client) return missingKeyResponse();
-  const startedAt = Date.now();
-
   try {
     const result = await runOnce(request.headers.get("x-calllens-request-id"), async () => {
       const transcription = await client.audio.transcriptions.create({
         file: value,
         model: configuration.transcriptionModel,
-        response_format: "json",
+        response_format: "diarized_json",
+        chunking_strategy: "auto",
       });
-      const raw = transcription as unknown as RawTranscription;
-      if (!raw.text?.trim()) throw new Error("empty_transcription");
-      const segments = (raw.segments ?? []).map((segment) => ({
-        start: typeof segment.start === "number" ? segment.start : null,
-        end: typeof segment.end === "number" ? segment.end : null,
-        speaker: segment.speaker?.trim() || "Unknown",
-        text: segment.text?.trim() || "",
-      })).filter((segment) => transcriptSegmentSchema.safeParse(segment).success);
-      return {
-        transcript: raw.text.trim(),
-        detectedLanguage: raw.language?.trim() || null,
-        durationSeconds: raw.duration ?? (Date.now() - startedAt) / 1000,
-        durationSource: raw.duration === undefined ? "processing" as const : "audio" as const,
-        segments,
-        fileName: value.name,
-      };
+      return normalizeProviderDiarizedTranscription(transcription, { model: configuration.transcriptionModel });
     });
     if (result.duplicate) {
       return Response.json({ error: { code: "duplicate_submission", message: "This audio file is already being processed." } }, { status: 409 });
     }
     return Response.json({ transcription: result.value });
   } catch (error) {
+    if (error instanceof Error && error.message === "invalid_diarized_transcription") {
+      return Response.json(
+        { error: { code: "invalid_transcription", message: "OpenAI returned an invalid diarized transcript. Nothing was displayed." } },
+        { status: 502 },
+      );
+    }
     return safeApiErrorResponse(error);
   }
 }

@@ -4,7 +4,7 @@
 
 - [ ] `pnpm lint` exits successfully.
 - [ ] `pnpm type-check` exits successfully.
-- [ ] `pnpm test:unit` passes all domain tests.
+- [ ] `pnpm test:unit` passes all analysis and audio-domain tests.
 - [ ] `pnpm test` passes unit, build, worker-render, and missing-key route tests.
 - [ ] `pnpm build` produces the Cloudflare-compatible worker output.
 
@@ -33,14 +33,44 @@
 - [ ] With no key, Analyze displays the exact missing-live-AI message.
 - [ ] Rapid double activation does not create duplicate submissions.
 
-## Audio upload
+## Audio upload and local playback
 
-- [ ] MP3, WAV, M4A, MP4, OGG, WebM, and FLAC can be selected.
-- [ ] Empty files, unsupported extensions, and files over 25 MB show clear errors.
-- [ ] Selected audio shows filename and size and can be removed.
-- [ ] Raw audio is not written to localStorage/sessionStorage.
-- [ ] Progress UI contains all five requested processing stages.
-- [ ] With no key, no upload is sent to OpenAI and the missing-key message appears.
+- [ ] Drag/drop and file picker accept MP3, WAV, M4A, MP4, MPEG, MPGA, OGG, WebM, and FLAC.
+- [ ] Empty files, unsupported extensions, files above `MAX_AUDIO_FILE_MB`, and browser-detectable unreadable audio show clear errors.
+- [ ] Selected audio shows filename, MIME type, size, duration, validation status, Replace, and Remove.
+- [ ] Play/pause, seek, ±5 seconds, volume, and 0.75x/1x/1.25x/1.5x/2x controls work by pointer and keyboard.
+- [ ] Replacing/removing/unmounting revokes temporary object URLs.
+- [ ] Raw audio is absent from localStorage and sessionStorage.
+- [ ] Progress UI contains the six requested stages.
+- [ ] With no key, only local preparation can complete; the exact live-transcription message appears and `/api/transcribe` is not requested.
+- [ ] Cancel and retry controls leave the selected local audio intact.
+
+## Diarized transcript workspace
+
+- [ ] Live responses enter state only after strict schema validation.
+- [ ] Speaker A/B defaults are labeled suggestions and can be remapped without changing provider speaker IDs.
+- [ ] Mapping changes update every related row and recalculate metrics.
+- [ ] Timestamp buttons seek audio and the active row follows playback.
+- [ ] Search, role filters, auto-scroll, quote/full copy, TXT export, and JSON export work.
+- [ ] Editing preserves original text, shows Edited, keeps timestamps, recalculates text metrics, and supports Undo.
+- [ ] Arabic rows render right-to-left without translating the provider text.
+- [ ] Continue to QA analysis remains disabled until a validated live transcript exists.
+
+## Deterministic audio insights
+
+- [ ] Talk duration/percentage, role ratio, words, and approximate WPM match the segment fixture.
+- [ ] Silence totals, longest/average gap, and possible/severe dead-air thresholds are correct.
+- [ ] Cross-speaker overlaps show pairs and durations; potential interruptions use only the configured minimum overlap.
+- [ ] UI wording does not claim interruption intent or rudeness.
+- [ ] English, Egyptian Arabic, and Gulf Arabic filler lists are editable and phrase-aware.
+- [ ] Filler evidence links to existing segment IDs and timestamps.
+- [ ] Audio Settings reject invalid thresholds and persist only non-sensitive values locally.
+
+## Sample audio analysis
+
+- [ ] `/sample-audio-analysis` prominently says it was not generated from this recording or session.
+- [ ] The sample is never attached to a newly selected file and never replaces user content.
+- [ ] Sample playback/edit controls do not imply that a recording exists.
 
 ## Results
 

@@ -3,11 +3,13 @@ import { LIVE_AI_MISSING_MESSAGE } from "./domain";
 
 export function getLiveAIConfiguration() {
   const apiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
+  const parsedMaximum = Number(process.env.MAX_AUDIO_FILE_MB ?? 25);
   return {
     configured: apiKey.length > 0,
     apiKey,
     analysisModel: process.env.OPENAI_ANALYSIS_MODEL?.trim() || "gpt-5.6-terra",
-    transcriptionModel: process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-transcribe",
+    transcriptionModel: process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-transcribe-diarize",
+    maxAudioFileMb: Number.isFinite(parsedMaximum) && parsedMaximum > 0 ? parsedMaximum : 25,
   };
 }
 

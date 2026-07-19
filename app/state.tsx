@@ -1,7 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_SCORECARDS, mapAnalysisState, type AnalysisResponse, type PrivacySummary, type QAScorecard, type ReportModel, type RolePlayResponse, type TranscriptionOutput } from "./lib/domain";
+import { DEFAULT_SCORECARDS, mapAnalysisState, type AnalysisResponse, type PrivacySummary, type QAScorecard, type ReportModel, type RolePlayResponse } from "./lib/domain";
+import {
+  DEFAULT_AUDIO_METRIC_SETTINGS,
+  type AudioMetricSettings,
+  type AudioMetrics,
+  type DiarizedTranscriptionResult,
+  type SpeakerMappingEntry,
+} from "./lib/audio-domain";
 
 export type CallMetadata = {
   agentName: string;
@@ -10,12 +17,16 @@ export type CallMetadata = {
   selectedDialect: "Auto Detect" | "Egyptian Arabic" | "Gulf Arabic" | "Modern Standard Arabic" | "Levantine Arabic" | "English" | "Mixed Arabic and English";
 };
 
-export type DemoSettings = { workspaceName: string; defaultLanguage: CallMetadata["selectedLanguage"]; maskSensitiveInformation: boolean; selectedScorecardId: string; scorecards: QAScorecard[] };
-export type CallLensState = { transcript: string; metadata: CallMetadata; transcription: TranscriptionOutput | null; analysis: AnalysisResponse | null; privacy: PrivacySummary | null; coachingPlan: AnalysisResponse["sevenDayCoachingPlan"]; rolePlayResult: RolePlayResponse | null; reportData: ReportModel | null; analysisSource: "live" | "example" | null };
+export type AudioAnalysisSettings = AudioMetricSettings & {
+  playbackSpeed: 0.75 | 1 | 1.25 | 1.5 | 2;
+  autoScrollTranscript: boolean;
+};
+export type DemoSettings = { workspaceName: string; defaultLanguage: CallMetadata["selectedLanguage"]; maskSensitiveInformation: boolean; selectedScorecardId: string; scorecards: QAScorecard[]; audio: AudioAnalysisSettings };
+export type CallLensState = { transcript: string; metadata: CallMetadata; transcription: DiarizedTranscriptionResult | null; speakerMapping: SpeakerMappingEntry[]; audioMetrics: AudioMetrics | null; analysis: AnalysisResponse | null; privacy: PrivacySummary | null; coachingPlan: AnalysisResponse["sevenDayCoachingPlan"]; rolePlayResult: RolePlayResponse | null; reportData: ReportModel | null; analysisSource: "live" | "example" | null };
 type StateContextValue = { state: CallLensState; settings: DemoSettings; updateState: (patch: Partial<CallLensState>) => void; updateMetadata: (patch: Partial<CallMetadata>) => void; updateSettings: (settings: DemoSettings) => void; setAnalysisResult: (analysis: AnalysisResponse, privacy: PrivacySummary) => void };
 
-const initialState: CallLensState = { transcript: "", metadata: { agentName: "Maya Hassan", callType: "Customer Service", selectedLanguage: "Auto Detect", selectedDialect: "Auto Detect" }, transcription: null, analysis: null, privacy: null, coachingPlan: [], rolePlayResult: null, reportData: null, analysisSource: null };
-const initialSettings: DemoSettings = { workspaceName: "Northstar Support", defaultLanguage: "Auto Detect", maskSensitiveInformation: true, selectedScorecardId: "general", scorecards: DEFAULT_SCORECARDS };
+const initialState: CallLensState = { transcript: "", metadata: { agentName: "Maya Hassan", callType: "Customer Service", selectedLanguage: "Auto Detect", selectedDialect: "Auto Detect" }, transcription: null, speakerMapping: [], audioMetrics: null, analysis: null, privacy: null, coachingPlan: [], rolePlayResult: null, reportData: null, analysisSource: null };
+const initialSettings: DemoSettings = { workspaceName: "Northstar Support", defaultLanguage: "Auto Detect", maskSensitiveInformation: true, selectedScorecardId: "general", scorecards: DEFAULT_SCORECARDS, audio: { ...DEFAULT_AUDIO_METRIC_SETTINGS, playbackSpeed: 1, autoScrollTranscript: true } };
 const StateContext = createContext<StateContextValue | null>(null);
 
 export function CallLensStateProvider({ children }: { children: React.ReactNode }) {
@@ -26,7 +37,10 @@ export function CallLensStateProvider({ children }: { children: React.ReactNode 
     let storedSettings: DemoSettings | null = null;
     try {
       const stored = window.localStorage.getItem("calllens-demo-settings");
-      if (stored) storedSettings = { ...initialSettings, ...JSON.parse(stored) as DemoSettings };
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<DemoSettings>;
+        storedSettings = { ...initialSettings, ...parsed, audio: { ...initialSettings.audio, ...(parsed.audio ?? {}) } };
+      }
     } catch { /* Browser storage is an optional demo convenience. */ }
     const timer = window.setTimeout(() => {
       if (storedSettings) setSettings(storedSettings);
