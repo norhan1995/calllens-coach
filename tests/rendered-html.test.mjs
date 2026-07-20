@@ -12,7 +12,10 @@ for (const [path, expected] of [
   ["/", "Good morning, Alex."],
   ["/welcome", "The dialect-aware AI QA manager for modern contact centers."],
   ["/analyze", "Turn a conversation into clear coaching."],
+  ["/results", "What your analysis will include"],
+  ["/coaching", "Your coaching plan will include"],
   ["/practice", "Practice Role-play"],
+  ["/settings", "Restore defaults"],
   ["/sample-analysis", "Example output for interface exploration"],
   ["/sample-audio-analysis", "Example output for interface exploration"],
   ["/report?example=1", "Maya delivered a calm, accurate resolution"],
@@ -24,6 +27,49 @@ for (const [path, expected] of [
     assert.match(await response.text(), new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   });
 }
+
+test("polished landing preview keeps the support promise and sample labels", async () => {
+  const response = await request("/welcome", { headers: { accept: "text/html" } });
+  const html = await response.text();
+  assert.match(html, /Upload a recording\. Get timestamped evidence, QA scoring, and focused coaching\./);
+  assert.match(html, /Egyptian Arabic/);
+  assert.match(html, /Evidence verified/);
+  assert.match(html, /Privacy masking on/);
+});
+
+test("results and coaching have honest, structurally distinct empty states", async () => {
+  const results = await (await request("/results", { headers: { accept: "text/html" } })).text();
+  const coaching = await (await request("/coaching", { headers: { accept: "text/html" } })).text();
+  assert.match(results, /No live analysis yet/);
+  assert.match(results, /Timestamped transcript/);
+  assert.doesNotMatch(results, /Customer frustration detected/);
+  assert.match(coaching, /structure placeholders, not generated recommendations/);
+  assert.match(coaching, /Role-play scenarios/);
+  assert.doesNotMatch(coaching, /What your analysis will include/);
+});
+
+test("sample Evidence Replay is interactive in markup and isolated from live empty results", async () => {
+  const sample = await (await request("/sample-analysis", { headers: { accept: "text/html" } })).text();
+  const live = await (await request("/results", { headers: { accept: "text/html" } })).text();
+  assert.match(sample, /SAMPLE EVIDENCE REPLAY · NO PLAYABLE AUDIO/);
+  assert.match(sample, /Customer frustration detected/);
+  assert.match(sample, /Verification missed/);
+  assert.match(sample, /Transcript-only sample/);
+  assert.doesNotMatch(live, /Customer frustration detected/);
+});
+
+test("dashboard, role-play, and settings expose the final polish affordances", async () => {
+  const dashboard = await (await request("/", { headers: { accept: "text/html" } })).text();
+  const practice = await (await request("/practice", { headers: { accept: "text/html" } })).text();
+  const settings = await (await request("/settings", { headers: { accept: "text/html" } })).text();
+  assert.match(dashboard, /TODAY’S QA INSIGHT · SAMPLE/);
+  assert.match(dashboard, /LATEST SAMPLE CALL/);
+  assert.match(practice, /WORKFLOW PREVIEW · STATIC EXAMPLE/);
+  assert.match(practice, /AI COACH FEEDBACK · PREVIEW/);
+  assert.match(practice, />Easy</);
+  assert.match(settings, /Restore defaults/);
+  assert.match(settings, /Stored locally; no call content or credentials/);
+});
 
 test("all live AI endpoints stop before an API call when the key is missing", async () => {
   for (const path of ["/api/analyze", "/api/transcribe", "/api/role-play"]) {

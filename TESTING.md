@@ -119,3 +119,21 @@
 - [ ] All AI endpoints return HTTP 503 before request parsing when the key is absent.
 - [ ] Server masking runs before the live analysis request.
 - [ ] Model responses are Zod-validated before state mapping.
+
+## Final polish regression checklist
+
+- [ ] Landing preview shows waveform/timeline, a timestamped quote, score 88, Egyptian Arabic, Evidence verified, and Privacy masking on without changing CTA destinations.
+- [ ] `/results` without state shows nine muted “What your analysis will include” placeholders and no sample finding text.
+- [ ] `/coaching` without state uses its own eight-card coaching roadmap and clearly calls every card a placeholder.
+- [ ] `/sample-analysis` shows the prominent transcript-only Evidence Replay label and all six events from 00:00 through 02:10.
+- [ ] Selecting each replay event highlights its exact transcript segment and changes the detail/recommendation/improved-response panel.
+- [ ] No seek occurs when sample audio is unavailable; Escape closes the selected detail; event buttons work from the keyboard.
+- [ ] Invalid replay segment IDs, quotes, roles, and timestamps are rejected. Position-only evidence renders its source label and cannot seek.
+- [ ] Results section navigation is present only after validated or clearly labeled sample analysis.
+- [ ] Dashboard cards remain explicitly labeled sample content and fit at 390 px without horizontal page overflow.
+- [ ] Mixed Arabic/English input uses `dir="auto"`; explicit Arabic/dialect input uses RTL; English uses LTR unless content requires auto direction.
+- [ ] Role-play preview labels AI Customer, Agent response, and AI Coach feedback as a static workflow preview and creates no turn before a live response.
+- [ ] Settings success/error feedback uses accessible status roles. Restore defaults requires confirmation and changes only local non-sensitive settings.
+- [ ] Keyboard focus is visible, pressed/loading states remain legible, and reduced-motion preference removes nonessential animation.
+- [ ] `pnpm run lint`, `pnpm run type-check`, `pnpm run test:unit`, `pnpm run build`, and built-worker route tests pass.
+- [ ] Desktop and 390 px browser QA cover landing, dashboard, analyze, live empty results, coaching empty, sample replay, practice, and settings.

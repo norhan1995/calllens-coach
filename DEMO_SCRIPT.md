@@ -53,3 +53,13 @@ Open the sample audio analysis and point out the prominent example-only banner, 
 Select **Analyze call** with no key configured.
 
 > CallLens fails closed: “Live AI is not configured. Add OPENAI_API_KEY to .env.local.” No paid request is attempted, and it never falls back to fake analysis. Adding the server-side key activates the same validated workflows you just explored.
+
+## Final exact judge flow
+
+1. Start on `/welcome`. Point out the miniature product preview, timestamped evidence, score 88, dialect badge, and privacy/evidence labels.
+2. Select **Open workspace** and show the clearly labeled sample insight and latest sample call on the dashboard.
+3. Open **Analyze Call**. Show both Upload Audio and Paste transcript, the six promised outputs, dialect helper, privacy masking, and the honest server-key requirement.
+4. Open **View sample analysis**, select each Evidence Replay event, and show the synchronized transcript highlight and coaching detail. State that the fixture has no recording, so playback and seeking are intentionally disabled.
+5. Explain that live transcription, analysis, and role-play activate only after `OPENAI_API_KEY` is configured server-side; no key or paid call was used for this build.
+6. Show the coaching empty-state/sample coaching path, then the static role-play workflow preview and Easy/Intermediate/Advanced labels. Do not imply that the preview is a running simulation.
+7. Return to `/` and end on the sample-only dashboard insight and latest sample call.

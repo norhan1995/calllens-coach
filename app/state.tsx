@@ -26,7 +26,17 @@ export type CallLensState = { transcript: string; metadata: CallMetadata; transc
 type StateContextValue = { state: CallLensState; settings: DemoSettings; updateState: (patch: Partial<CallLensState>) => void; updateMetadata: (patch: Partial<CallMetadata>) => void; updateSettings: (settings: DemoSettings) => void; setAnalysisResult: (analysis: AnalysisResponse, privacy: PrivacySummary) => void };
 
 const initialState: CallLensState = { transcript: "", metadata: { agentName: "Maya Hassan", callType: "Customer Service", selectedLanguage: "Auto Detect", selectedDialect: "Auto Detect" }, transcription: null, speakerMapping: [], audioMetrics: null, analysis: null, privacy: null, coachingPlan: [], rolePlayResult: null, reportData: null, analysisSource: null };
-const initialSettings: DemoSettings = { workspaceName: "Northstar Support", defaultLanguage: "Auto Detect", maskSensitiveInformation: true, selectedScorecardId: "general", scorecards: DEFAULT_SCORECARDS, audio: { ...DEFAULT_AUDIO_METRIC_SETTINGS, playbackSpeed: 1, autoScrollTranscript: true } };
+export function createDefaultDemoSettings(): DemoSettings {
+  return {
+    workspaceName: "Northstar Support",
+    defaultLanguage: "Auto Detect",
+    maskSensitiveInformation: true,
+    selectedScorecardId: "general",
+    scorecards: structuredClone(DEFAULT_SCORECARDS),
+    audio: { ...structuredClone(DEFAULT_AUDIO_METRIC_SETTINGS), playbackSpeed: 1, autoScrollTranscript: true },
+  };
+}
+const initialSettings = createDefaultDemoSettings();
 const StateContext = createContext<StateContextValue | null>(null);
 
 export function CallLensStateProvider({ children }: { children: React.ReactNode }) {

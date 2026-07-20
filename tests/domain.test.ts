@@ -5,6 +5,7 @@ import {
   MAX_AUDIO_BYTES,
   analysisResponseSchema,
   buildReportModel,
+  getContentDirection,
   isRtlContent,
   mapAnalysisState,
   maskSensitiveInformation,
@@ -63,6 +64,11 @@ test("Arabic and mixed-language content selects RTL rendering", () => {
   assert.equal(isRtlContent("Mixed Arabic and English", "hello"), true);
   assert.equal(isRtlContent("English", "أبشر، I will help"), true);
   assert.equal(isRtlContent("English", "I will help"), false);
+  assert.equal(getContentDirection("Arabic", "hello"), "rtl");
+  assert.equal(getContentDirection("Egyptian Arabic", "hello"), "rtl");
+  assert.equal(getContentDirection("Mixed Arabic and English", "hello"), "auto");
+  assert.equal(getContentDirection("English", "I will help"), "ltr");
+  assert.equal(getContentDirection("English", "أبشر، I will help"), "auto");
 });
 
 test("analysis state mapping keeps validated coaching and report data together", () => {

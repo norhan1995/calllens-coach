@@ -47,3 +47,13 @@
 - Replaced starter tests with built-worker route and missing-key tests.
 - Added README architecture/setup/deployment documentation.
 - Added three-minute demo script and manual QA checklist.
+
+## Final hackathon polish · 2026-07-19
+
+- Replaced the decorative landing result card with a miniature product workflow: waveform, timeline, timestamped quote, score, dialect/privacy/evidence labels, finding, warning, and coaching states.
+- Added distinct results and coaching empty-state architectures with muted placeholders that never resemble completed AI output.
+- Added a typed, reusable Evidence Replay and six-event transcript-only sample. Invalid segment, quote, role, and timestamp references are excluded; missing audio never pretends to play or seek.
+- Added lightweight analysis section navigation, dashboard sample insight/latest-call cards, analysis deliverables, dialect guidance, mixed-language automatic direction, and a clearly static role-play workflow preview.
+- Added accessible focus/pressed/status behavior, keyboard event selection, Escape-to-close replay details, reduced-motion handling, settings success/error toasts, and confirmed local-default restoration.
+- Expanded unit and built-worker regressions for replay validation, sample/live isolation, empty states, landing labels, dashboard, role-play preview, settings, and direction logic.
+- Kept the application key-last: no key was configured, no live API request was made, and the existing private preview was not changed.

@@ -315,6 +315,12 @@ export function isRtlContent(language: string, text = "") {
   return language === "Arabic" || language.includes("Arabic") || /[\u0600-\u06ff]/.test(text);
 }
 
+export function getContentDirection(language: string, text = ""): "rtl" | "ltr" | "auto" {
+  if (language === "Mixed Arabic and English") return "auto";
+  if (language === "Arabic" || language.includes("Arabic")) return "rtl";
+  return /[\u0600-\u06ff]/.test(text) ? "auto" : "ltr";
+}
+
 export function parseAnalysisResponse(value: unknown) {
   return analysisResponseSchema.safeParse(value);
 }

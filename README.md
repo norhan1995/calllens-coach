@@ -188,3 +188,11 @@ Codex audited the existing single-component application, preserved its design la
 ## Build Week work completed
 
 See [BUILD_WEEK.md](./BUILD_WEEK.md) for the dated feature log.
+
+## Final hackathon polish
+
+The last local-only pass adds a real miniature workspace preview on `/welcome`, richer but honest empty states, dashboard sample insight, a static role-play workflow preview, local settings save/error toasts, and confirmed restore-to-defaults. The `/sample-analysis` route now includes a reusable Evidence Replay that connects six validated findings to normalized transcript segment IDs. Its fixture has no recording, so event selection highlights transcript evidence while playback and seeking remain explicitly disabled.
+
+Sample replay data is route-isolated and never enters current live call state. Live replay accepts normalized segments, playback time, seek handling, selected/active IDs, audio availability, and validated finding references; missing segments, mismatched roles, non-verbatim quotes, and out-of-range timestamps are rejected. Position-only pasted transcripts retain source position labels and never receive invented numerical timestamps.
+
+Final pre-API demo flow: landing product preview → open workspace → upload or paste a call → open the sample Evidence Replay → explain that live analysis activates only with the server-side `OPENAI_API_KEY` → show coaching and the static role-play workflow preview → finish on the dashboard. This polish pass did not configure a key, make a paid API call, or republish the private preview.

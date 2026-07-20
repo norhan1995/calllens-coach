@@ -31,9 +31,12 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # environment files: commit the documented template only
+.env
+.env.local
+.env.*.local
+.env*.local
 .env*
 !.env.example
-.env.local
 
 # vercel
 .vercel
