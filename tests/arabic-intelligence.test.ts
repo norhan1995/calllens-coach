@@ -16,6 +16,7 @@ import {
   resolveOptionalArabicEnrichment,
   validateEnrichmentReferences,
   workspaceVocabularySchema,
+  type ArabicEnrichmentResponse,
 } from "../app/lib/arabic-intelligence.ts";
 import { prepareAudioForTranscription } from "../app/lib/audio-preprocessing.ts";
 import {
@@ -187,7 +188,7 @@ test("17. every enrichment observation must reference a real provider segment", 
   const raw = transcript([{ id: "valid-1", speakerId: "A", start: 0, end: 2, text: "أنا عايز معاد" }]);
   const deterministic = createDeterministicArabicIntelligence(raw, DEFAULT_WORKSPACE_VOCABULARY, NO_PREPROCESSING);
   const valid = {
-    segmentCorrections: [],
+    segmentCorrections: [] as ArabicEnrichmentResponse["segmentCorrections"],
     dialectObservations: deterministic.metadata.dialectObservations,
     codeSwitchingObservations: deterministic.metadata.codeSwitchingObservations,
     annotations: deterministic.metadata.annotations,
