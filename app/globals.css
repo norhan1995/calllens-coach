@@ -108,3 +108,90 @@
   .transcript-representations small{grid-column:1}
   .filter-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* v2.1.1 role-play and public hero presentation polish */
+.practice-page .page-intro{margin-bottom:22px}
+.practice-page .roleplay-grid{grid-template-columns:minmax(0,1.45fr) minmax(300px,.72fr);gap:14px;align-items:stretch}
+.practice-page .roleplay-grid>.panel{height:100%;border-radius:10px}
+.roleplay-settings-card{padding:24px}
+.roleplay-settings-card h2{margin:0 0 4px;font-size:22px;line-height:1.3}
+.roleplay-settings-card .setting-row{gap:24px;padding:10px 0}
+.roleplay-settings-card .setting-row>label{font-size:13px;font-weight:700;line-height:1.4;color:var(--ink)}
+.roleplay-settings-card .setting-row select{width:252px;min-height:44px;padding:10px 12px;font-size:13px;line-height:1.3;color:#40575a}
+.roleplay-settings-card .field-label{margin:15px 0 8px;font-size:13px;line-height:1.4;letter-spacing:.75px;color:#5f7376}
+.roleplay-settings-card .goal-input{min-height:100px;padding:12px 14px;font-size:14px;line-height:1.55;border-radius:7px}
+.roleplay-settings-card .goal-input:focus{border-color:#5db3a8;box-shadow:0 0 0 3px #dff4f0}
+.roleplay-settings-card .difficulty-key{gap:8px;margin:0 0 4px}
+.roleplay-settings-card .difficulty-key>button{min-width:0;min-height:48px;padding:9px 10px;display:grid;align-content:center;gap:3px;text-align:left;border:1px solid var(--line);border-radius:7px;background:#fff;color:#5d7073;font-size:12px;line-height:1.25}
+.roleplay-settings-card .difficulty-key>button small{font-size:9px;font-weight:400;color:#7c8d8f}
+.roleplay-settings-card .difficulty-key>button:hover:not(.active){border-color:#8fcac2;background:#f7fbfa;color:var(--deep)}
+.roleplay-settings-card .difficulty-key>button.active{border-color:#55afa4;background:#e6f5f1;color:var(--teal);font-weight:800;box-shadow:inset 0 0 0 1px #b8e3db}
+.roleplay-settings-card .difficulty-key>button.active small{color:#397a72;font-weight:600}
+
+.practice-page .roleplay-ready{padding:26px;background:#123f3f}
+.practice-page .roleplay-ready>span.eyebrow{font-size:10px;line-height:1.4;letter-spacing:1.1px}
+.practice-page .roleplay-ready h2{margin:11px 0 8px;font-size:25px;line-height:1.18;text-wrap:balance}
+.practice-page .roleplay-ready>p{margin:0;font-size:12px;line-height:1.6;color:#c0d5d2}
+.practice-page .roleplay-preview{counter-reset:workflow-step;gap:10px;margin:20px 0 18px}
+.practice-page .roleplay-preview article{counter-increment:workflow-step;position:relative;min-height:88px;padding:14px 42px 14px 14px;border:1px solid #ffffff42;border-radius:9px;display:grid;align-content:center;gap:7px}
+.practice-page .roleplay-preview article:before{content:counter(workflow-step);position:absolute;right:13px;top:12px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#dcecea;color:#14514f;font-size:10px;font-weight:800}
+.practice-page .roleplay-preview article.customer{margin-right:14px;background:#f3f6f5}
+.practice-page .roleplay-preview article.agent{margin-left:14px;background:#e7f4f1}
+.practice-page .roleplay-preview article.coach{background:#f1eef7;border-left:3px solid var(--violet)}
+.practice-page .roleplay-preview small{font-size:9px;line-height:1.35;letter-spacing:.55px;color:#557174}
+.practice-page .roleplay-preview p{margin:0;font-size:12px;line-height:1.55;color:#496267}
+.practice-page .roleplay-ready .primary{min-height:52px;font-size:15px;font-weight:800}
+.practice-page .roleplay-key-note{margin:11px 6px 0;font-size:10px;line-height:1.5;color:#9fc0bd}
+
+.landing .hero{grid-template-columns:minmax(0,1.08fr) minmax(390px,.92fr);align-items:start;gap:48px;padding:64px 24px 88px}
+.landing .hero-copy{min-width:0;padding-top:2px}
+.landing .hero-copy>.eyebrow{display:block;margin-bottom:14px;font-size:10px;line-height:1.4;letter-spacing:1.1px}
+.landing .hero-copy h1{max-width:12.5em;margin:0 0 22px;font-size:clamp(40px,5vw,56px);line-height:1.05;letter-spacing:-.75px;text-wrap:balance}
+.landing .hero-copy>p:not(.hero-support){max-width:620px;margin:0;font-size:16px;line-height:1.7}
+.landing .hero-copy .hero-support{max-width:610px;margin:18px 0 0;font-size:14px;line-height:1.5}
+.landing .hero-copy .hero-actions{gap:12px;margin-top:25px}
+.landing .hero-copy .hero-actions .primary,.landing .hero-copy .hero-actions .secondary{min-height:50px;padding:14px 22px}
+.landing .hero-copy .hero-actions .secondary:hover{border-color:#8fcac2;background:#f9fbfa}
+.landing .trust-row{gap:12px 22px;margin-top:22px;font-size:12px;line-height:1.45}
+.landing .trust-row span{display:inline-flex;align-items:center;gap:6px}
+.landing .trust-row i{margin:0;font-size:12px}
+.landing .hero-product{width:100%;max-width:500px;justify-self:end;align-self:start;margin-top:6px;padding:24px;border-radius:14px;transform:none;box-shadow:0 18px 46px #103f3f18}
+.landing .hero-product:before{inset:-10px 16px auto -10px;height:68%;border-color:#b8ddd7}
+.landing .hero-workspace-preview{gap:13px}
+.landing .preview-top{padding-bottom:15px}
+.landing .preview-top>b{font-size:34px}
+.landing .preview-labels{gap:7px}
+.landing .preview-labels span{padding:6px 9px;font-size:9px}
+.landing .preview-waveform{height:82px;padding:11px 13px}
+.landing .preview-transcript{padding:13px}
+.landing .preview-transcript p{line-height:1.5}
+.landing .preview-finding-grid{gap:8px}
+.landing .preview-finding-grid article{min-height:57px;padding:10px}
+
+@media(max-width:1050px){
+  .practice-page .roleplay-grid{grid-template-columns:1fr}
+  .practice-page .roleplay-ready{height:auto}
+  .landing .hero{gap:38px}
+}
+@media(max-width:900px){
+  .landing .hero{grid-template-columns:1fr;gap:38px;padding-top:48px}
+  .landing .hero-copy h1{max-width:680px;font-size:clamp(40px,7vw,48px)}
+  .landing .hero-copy>p:not(.hero-support){max-width:660px}
+  .landing .hero-product{max-width:640px;justify-self:start;margin-top:0}
+}
+@media(max-width:760px){
+  .roleplay-settings-card .setting-row{align-items:stretch;gap:8px}
+  .roleplay-settings-card .setting-row select{width:100%}
+  .landing .hero{gap:30px;padding:36px 20px 64px}
+}
+@media(max-width:520px){
+  .practice-page .roleplay-grid>.panel{padding:18px}
+  .practice-page .roleplay-preview article.customer,.practice-page .roleplay-preview article.agent{margin-inline:0}
+  .landing .hero-copy h1{font-size:38px;line-height:1.07;letter-spacing:-.5px}
+  .landing .hero-copy>p:not(.hero-support){font-size:15px;line-height:1.65}
+  .landing .hero-copy .hero-actions{display:grid;grid-template-columns:1fr;width:100%}
+  .landing .hero-copy .hero-actions .primary,.landing .hero-copy .hero-actions .secondary{width:100%}
+  .landing .trust-row{gap:10px 18px}
+  .landing .hero-product{padding:18px}
+  .landing .hero-product:before{display:none}
+}
