@@ -9,6 +9,11 @@ import {
   type DiarizedTranscriptionResult,
   type SpeakerMappingEntry,
 } from "./lib/audio-domain";
+import {
+  DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS,
+  transcriptionWorkspaceSettingsSchema,
+  type TranscriptionWorkspaceSettings,
+} from "./lib/arabic-intelligence.ts";
 
 export type CallMetadata = {
   agentName: string;
@@ -18,7 +23,7 @@ export type CallMetadata = {
 };
 
 export type AudioAnalysisSettings = PersistedAudioAnalysisSettings;
-export type DemoSettings = { workspaceName: string; defaultLanguage: CallMetadata["selectedLanguage"]; maskSensitiveInformation: boolean; selectedScorecardId: string; scorecards: QAScorecard[]; audio: AudioAnalysisSettings };
+export type DemoSettings = { workspaceName: string; defaultLanguage: CallMetadata["selectedLanguage"]; maskSensitiveInformation: boolean; selectedScorecardId: string; scorecards: QAScorecard[]; audio: AudioAnalysisSettings; transcription: TranscriptionWorkspaceSettings };
 export type CallLensState = { transcript: string; metadata: CallMetadata; transcription: DiarizedTranscriptionResult | null; speakerMapping: SpeakerMappingEntry[]; audioMetrics: AudioMetrics | null; analysis: AnalysisResponse | null; privacy: PrivacySummary | null; coachingPlan: AnalysisResponse["sevenDayCoachingPlan"]; rolePlayResult: RolePlayResponse | null; reportData: ReportModel | null; analysisSource: "live" | "example" | null };
 type StateContextValue = { state: CallLensState; settings: DemoSettings; updateState: (patch: Partial<CallLensState>) => void; updateMetadata: (patch: Partial<CallMetadata>) => void; updateSettings: (settings: DemoSettings) => void; setAnalysisResult: (analysis: AnalysisResponse, privacy: PrivacySummary) => void };
 
@@ -31,6 +36,7 @@ export function createDefaultDemoSettings(): DemoSettings {
     selectedScorecardId: "general",
     scorecards: structuredClone(DEFAULT_SCORECARDS),
     audio: { ...structuredClone(DEFAULT_AUDIO_METRIC_SETTINGS), playbackSpeed: 1, autoScrollTranscript: true },
+    transcription: structuredClone(DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS),
   };
 }
 const initialSettings = createDefaultDemoSettings();
@@ -46,7 +52,20 @@ export function CallLensStateProvider({ children }: { children: React.ReactNode 
       const stored = window.localStorage.getItem("calllens-demo-settings");
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<DemoSettings>;
-        storedSettings = { ...initialSettings, ...parsed, audio: { ...initialSettings.audio, ...(parsed.audio ?? {}) } };
+        const transcription = transcriptionWorkspaceSettingsSchema.safeParse({
+          ...initialSettings.transcription,
+          ...(parsed.transcription ?? {}),
+          vocabulary: {
+            ...initialSettings.transcription.vocabulary,
+            ...(parsed.transcription?.vocabulary ?? {}),
+          },
+        });
+        storedSettings = {
+          ...initialSettings,
+          ...parsed,
+          audio: { ...initialSettings.audio, ...(parsed.audio ?? {}) },
+          transcription: transcription.success ? transcription.data : initialSettings.transcription,
+        };
       }
     } catch { /* Browser storage is an optional demo convenience. */ }
     const timer = window.setTimeout(() => {

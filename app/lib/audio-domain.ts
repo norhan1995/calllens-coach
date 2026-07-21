@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  arabicIntelligenceMetadataSchema,
+  transcriptSnapshotSchema,
+  type ArabicIntelligenceMetadata,
+  type TranscriptSnapshot,
+} from "./arabic-intelligence.ts";
 
 export const SPEAKER_ROLES = ["agent", "customer", "unknown"] as const;
 export const speakerRoleSchema = z.enum(SPEAKER_ROLES);
@@ -35,6 +41,9 @@ export const diarizedTranscriptionResultSchema = z
     detectedLanguage: z.string().trim().min(1).nullable().optional(),
     model: z.string().trim().min(1).optional(),
     createdAt: z.iso.datetime(),
+    rawTranscript: transcriptSnapshotSchema.optional(),
+    enhancedTranscript: transcriptSnapshotSchema.optional(),
+    arabicIntelligence: arabicIntelligenceMetadataSchema.optional(),
   })
   .strict()
   .superRefine((result, context) => {
@@ -54,6 +63,18 @@ export const diarizedTranscriptionResultSchema = z
     });
     if (latestEnd > result.duration + 0.25) {
       context.addIssue({ code: "custom", message: "Audio duration cannot end before its final segment.", path: ["duration"] });
+    }
+    const intelligenceFields = [result.rawTranscript, result.enhancedTranscript, result.arabicIntelligence];
+    if (intelligenceFields.some(Boolean) && !intelligenceFields.every(Boolean)) {
+      context.addIssue({ code: "custom", message: "Arabic Intelligence requires raw, enhanced, and metadata representations together.", path: ["arabicIntelligence"] });
+    }
+    for (const snapshot of [result.rawTranscript, result.enhancedTranscript]) {
+      if (!snapshot) continue;
+      const snapshotIds = snapshot.segments.map((segment) => segment.id);
+      const resultIds = result.segments.map((segment) => segment.id);
+      if (snapshotIds.length !== resultIds.length || snapshotIds.some((id, index) => id !== resultIds[index])) {
+        context.addIssue({ code: "custom", message: "Transcript representations must preserve provider segment order and IDs.", path: ["segments"] });
+      }
     }
   });
 
@@ -179,6 +200,34 @@ export type AudioMetrics = z.infer<typeof audioMetricsSchema>;
 export type EvidenceReference = z.infer<typeof evidenceReferenceSchema>;
 export type SegmentInsight = z.infer<typeof segmentInsightSchema>;
 
+export function applyArabicIntelligence(
+  result: DiarizedTranscriptionResult,
+  rawTranscript: TranscriptSnapshot,
+  enhancedTranscript: TranscriptSnapshot,
+  arabicIntelligence: ArabicIntelligenceMetadata,
+): DiarizedTranscriptionResult {
+  const enhancedById = new Map(enhancedTranscript.segments.map((segment) => [segment.id, segment]));
+  const segments = result.segments.map((segment) => {
+    const enhanced = enhancedById.get(segment.id);
+    if (!enhanced) return segment;
+    return {
+      ...segment,
+      text: enhanced.text,
+      originalText: enhanced.text,
+      editedText: null,
+      isEdited: false,
+    };
+  });
+  return diarizedTranscriptionResultSchema.parse({
+    ...result,
+    text: enhancedTranscript.text,
+    segments,
+    rawTranscript,
+    enhancedTranscript,
+    arabicIntelligence,
+  });
+}
+
 export const SUPPORTED_AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "mpeg", "mpga", "ogg", "webm", "flac"] as const;
 export const DEFAULT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
@@ -301,7 +350,11 @@ export function editTranscriptSegment(
       : segment,
   );
   if (!segments.some((segment) => segment.id === segmentId)) throw new Error("Transcript segment was not found.");
-  return diarizedTranscriptionResultSchema.parse({ ...result, text: segments.map((segment) => segment.text).join(" "), segments });
+  const text = segments.map((segment) => segment.text).join(" ");
+  const enhancedTranscript = result.enhancedTranscript
+    ? { text, segments: segments.map(({ id, speakerId, start, end, text: segmentText }) => ({ id, speakerId, start, end, text: segmentText })) }
+    : undefined;
+  return diarizedTranscriptionResultSchema.parse({ ...result, text, segments, enhancedTranscript });
 }
 
 export function undoTranscriptSegment(
@@ -313,7 +366,11 @@ export function undoTranscriptSegment(
       ? { ...segment, text: segment.originalText, editedText: null, isEdited: false }
       : segment,
   );
-  return diarizedTranscriptionResultSchema.parse({ ...result, text: segments.map((segment) => segment.text).join(" "), segments });
+  const text = segments.map((segment) => segment.text).join(" ");
+  const enhancedTranscript = result.enhancedTranscript
+    ? { text, segments: segments.map(({ id, speakerId, start, end, text: segmentText }) => ({ id, speakerId, start, end, text: segmentText })) }
+    : undefined;
+  return diarizedTranscriptionResultSchema.parse({ ...result, text, segments, enhancedTranscript });
 }
 
 function round(value: number, digits = 2) {
@@ -514,4 +571,19 @@ export function formatAudioTimestamp(seconds: number) {
   const minutes = Math.floor(safe / 60);
   const remainder = safe % 60;
   return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+}
+
+function exportRoleLabel(role: AudioTranscriptSegment["role"]) {
+  return role === "unknown" ? "Other / Unknown" : role[0].toUpperCase() + role.slice(1);
+}
+
+export function serializeTranscriptTxt(result: DiarizedTranscriptionResult) {
+  const validated = diarizedTranscriptionResultSchema.parse(result);
+  return validated.segments
+    .map((segment) => `[${formatAudioTimestamp(segment.start)}] ${exportRoleLabel(segment.role)} (${segment.speakerId}): ${segment.text}`)
+    .join("\n");
+}
+
+export function serializeTranscriptJson(result: DiarizedTranscriptionResult) {
+  return JSON.stringify(diarizedTranscriptionResultSchema.parse(result), null, 2);
 }

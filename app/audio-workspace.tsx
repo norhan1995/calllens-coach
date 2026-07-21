@@ -10,6 +10,8 @@ import {
   formatAudioTimestamp,
   getSuggestedSpeakerMapping,
   replaceObjectUrl,
+  serializeTranscriptJson,
+  serializeTranscriptTxt,
   undoTranscriptSegment,
   validateAudioFile,
   type AudioMetrics,
@@ -141,7 +143,11 @@ export function AudioWorkspace({
     abortRef.current = controller;
     setWorkflow("uploading"); setProgress(2);
     try {
-      const form = new FormData(); form.set("audio", file);
+      const form = new FormData();
+      form.set("audio", file);
+      form.set("transcriptionMode", settings.transcription.mode);
+      form.set("preprocessAudio", String(settings.transcription.preprocessModerateAudio));
+      form.set("workspaceVocabulary", JSON.stringify(settings.transcription.vocabulary));
       setWorkflow("transcribing");
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -226,7 +232,9 @@ export function AudioWorkspace({
       <SpeakerMapping result={state.transcription} mapping={state.speakerMapping} metrics={state.audioMetrics} onChange={updateMapping} />
       <TranscriptViewer result={state.transcription} audioUrl={objectUrl} defaultAutoScroll={settings.audio.autoScrollTranscript} onEdit={updateSegment} onUndo={undoSegment} />
       <AudioInsights result={state.transcription} metrics={state.audioMetrics} audioUrl={objectUrl} />
-      <div className="panel future-insights"><div><span className="eyebrow">FUTURE VALIDATED AI INSIGHTS</span><h3>Transcript is prepared for segment-level enrichment</h3></div><span>AI-inferred emotion</span><span>Dialect interpretation</span><span>Code-switching observation</span><small>No inference is shown until a future live AI response passes schema and evidence validation.</small></div>
+      {state.transcription.arabicIntelligence
+        ? <ArabicIntelligencePanel result={state.transcription} />
+        : <div className="panel future-insights"><div><span className="eyebrow">FUTURE VALIDATED AI INSIGHTS</span><h3>Transcript is prepared for segment-level enrichment</h3></div><span>AI-inferred emotion</span><span>Dialect interpretation</span><span>Code-switching observation</span><small>No inference is shown until a future live AI response passes schema and evidence validation.</small></div>}
       <button className="analyze-button" onClick={continueToAnalysis} disabled={continuing}>{continuing ? "Starting QA analysis…" : "Continue to QA analysis"}</button>
     </>}
   </div>;
@@ -278,19 +286,39 @@ function TranscriptViewer({ result, audioUrl, defaultAutoScroll, onEdit, onUndo,
   const [filter, setFilter] = useState<"all" | "agent" | "customer" | "unknown">("all");
   const [search, setSearch] = useState("");
   const [autoScroll, setAutoScroll] = useState(defaultAutoScroll);
+  const [representation, setRepresentation] = useState<"enhanced" | "raw">("enhanced");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const active = result.segments.find((segment) => time >= segment.start && time < segment.end)?.id ?? null;
+  const displaySegments = representation === "raw" && result.rawTranscript
+    ? result.rawTranscript.segments.map((raw) => {
+        const current = result.segments.find((segment) => segment.id === raw.id)!;
+        return { ...current, ...raw, originalText: raw.text, editedText: null, isEdited: false };
+      })
+    : result.segments;
+  const displayText = representation === "raw" && result.rawTranscript ? result.rawTranscript.text : result.text;
+  const active = displaySegments.find((segment) => time >= segment.start && time < segment.end)?.id ?? null;
   useEffect(() => { if (autoScroll && active) rowRefs.current.get(active)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [active, autoScroll]);
-  const filtered = result.segments.filter((segment) => (filter === "all" || segment.role === filter) && segment.text.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  const filtered = displaySegments.filter((segment) => (filter === "all" || segment.role === filter) && segment.text.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   function seek(seconds: number) { if (!audioRef.current) return; audioRef.current.currentTime = seconds; void audioRef.current.play(); }
   function copy(text: string) { void navigator.clipboard?.writeText(text); }
   return <section className="panel transcript-panel"><audio ref={audioRef} src={audioUrl ?? undefined} onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} />
-    <div className="panel-head"><div><span className="eyebrow">TIMESTAMPED TRANSCRIPT</span><h2>Review, seek, correct, and export</h2></div><div className="transcript-actions"><button onClick={() => copy(result.text)}>Copy full transcript</button><button onClick={() => downloadText("calllens-transcript.txt", result.segments.map((segment) => `[${formatAudioTimestamp(segment.start)}] ${roleLabel(segment.role)} (${segment.speakerId}): ${segment.text}`).join("\n"), "text/plain")}>Export TXT</button><button onClick={() => downloadText("calllens-transcript.json", JSON.stringify(result, null, 2), "application/json")}>Export JSON</button></div></div>
+    <div className="panel-head"><div><span className="eyebrow">TIMESTAMPED TRANSCRIPT</span><h2>Review, seek, correct, and export</h2></div><div className="transcript-actions"><button onClick={() => copy(displayText)}>Copy full transcript</button><button onClick={() => downloadText("calllens-transcript.txt", serializeTranscriptTxt(result), "text/plain")}>Export TXT</button><button onClick={() => downloadText("calllens-transcript.json", serializeTranscriptJson(result), "application/json")}>Export JSON</button></div></div>
+    {result.rawTranscript && <div className="transcript-representations" aria-label="Transcript representation"><button className={representation === "enhanced" ? "selected" : ""} onClick={() => setRepresentation("enhanced")}>Enhanced transcript</button><button className={representation === "raw" ? "selected" : ""} onClick={() => { setEditingId(null); setRepresentation("raw"); }}>Raw provider transcript</button><small>Raw text is immutable. Exports remain backward compatible and JSON includes both representations.</small></div>}
     <div className="transcript-toolbar"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search transcript" aria-label="Search transcript" /><div className="filter-tabs">{(["all", "agent", "customer", "unknown"] as const).map((value) => <button key={value} className={filter === value ? "selected" : ""} onClick={() => setFilter(value)}>{value === "all" ? "All" : roleLabel(value)}</button>)}</div><label><input type="checkbox" checked={autoScroll} onChange={(event) => setAutoScroll(event.target.checked)} /> Auto-scroll</label></div>
     <div className="transcript-list">{filtered.map((segment) => <div ref={(node) => { if (node) rowRefs.current.set(segment.id, node); else rowRefs.current.delete(segment.id); }} key={segment.id} className={`transcript-row ${active === segment.id ? "active" : ""}`}>
-      <button className="timestamp" onClick={() => seek(segment.start)} disabled={!audioUrl} aria-label={`Seek to ${formatAudioTimestamp(segment.start)}`}>{formatAudioTimestamp(segment.start)}</button><div className="speaker-pill"><b>{roleLabel(segment.role)}</b><small>Speaker {segment.speakerId}</small></div><div className="segment-copy" dir={isRtlContent(result.detectedLanguage ?? "", segment.text) ? "rtl" : "auto"}>{editingId === segment.id ? <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={`Edit segment ${segment.id}`} /> : <p>{segment.text}</p>}{segment.isEdited && <span className="edited-badge">Edited</span>}</div><div className="row-actions">{editingId === segment.id ? <><button onClick={() => { onEdit(segment.id, draft); setEditingId(null); }}>Save</button><button onClick={() => setEditingId(null)}>Cancel</button></> : <><button onClick={() => copy(segment.text)}>Copy quote</button>{editable && <button onClick={() => { setEditingId(segment.id); setDraft(segment.text); }}>Edit</button>}{editable && segment.isEdited && <button onClick={() => onUndo(segment.id)}>Undo</button>}</>}</div>
+      <button className="timestamp" onClick={() => seek(segment.start)} disabled={!audioUrl} aria-label={`Seek to ${formatAudioTimestamp(segment.start)}`}>{formatAudioTimestamp(segment.start)}</button><div className="speaker-pill"><b>{roleLabel(segment.role)}</b><small>Speaker {segment.speakerId}</small></div><div className="segment-copy" dir={isRtlContent(result.detectedLanguage ?? "", segment.text) ? "rtl" : "auto"}>{editingId === segment.id ? <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={`Edit segment ${segment.id}`} /> : <p>{segment.text}</p>}{segment.isEdited && <span className="edited-badge">Edited</span>}</div><div className="row-actions">{editingId === segment.id ? <><button onClick={() => { onEdit(segment.id, draft); setEditingId(null); }}>Save</button><button onClick={() => setEditingId(null)}>Cancel</button></> : <><button onClick={() => copy(segment.text)}>Copy quote</button>{editable && representation === "enhanced" && <button onClick={() => { setEditingId(segment.id); setDraft(segment.text); }}>Edit</button>}{editable && representation === "enhanced" && segment.isEdited && <button onClick={() => onUndo(segment.id)}>Undo</button>}</>}</div>
     </div>)}</div>
+  </section>;
+}
+
+function ArabicIntelligencePanel({ result }: { result: DiarizedTranscriptionResult }) {
+  const intelligence = result.arabicIntelligence!;
+  return <section className="panel arabic-intelligence-panel"><div className="panel-head"><div><span className="eyebrow accent">ARABIC TRANSCRIPTION INTELLIGENCE</span><h2>Evidence-linked linguistic observations</h2></div><span className="intelligence-status">{intelligence.enrichment.status === "completed" ? "Structured enrichment complete" : "Safe deterministic fallback"}</span></div>
+    <div className="intelligence-summary"><span><b>{intelligence.vocabularyChanges.length}</b> vocabulary normalizations</span><span><b>{intelligence.dialectObservations.length}</b> speaker interpretations</span><span><b>{intelligence.codeSwitchingObservations.length}</b> code-switching observations</span><span><b>{intelligence.annotations.length}</b> evidence annotations</span></div>
+    <div className="intelligence-grid"><div><small>DIALECT INTERPRETATION</small>{intelligence.dialectObservations.map((observation) => <article key={observation.speakerId}><b>Speaker {observation.speakerId}: {observation.dialectFamily}</b><span>{Math.round(observation.confidence * 100)}% confidence · {observation.segmentIds.join(", ")}</span><p>{observation.notes}</p></article>)}</div>
+      <div><small>CODE-SWITCHING OBSERVATION</small>{intelligence.codeSwitchingObservations.length ? intelligence.codeSwitchingObservations.map((observation, index) => <article key={`${observation.segmentIds.join("-")}-${index}`}><b>{observation.languages.join(" ↔ ")}</b><span>{observation.segmentIds.join(", ")}</span><p>{observation.explanation}</p></article>) : <p>No evidence-supported Arabic-English switch was detected.</p>}</div>
+      <div><small>UNCERTAINTY AND NON-SPEECH</small>{intelligence.annotations.length ? intelligence.annotations.map((annotation, index) => <article key={`${annotation.type}-${annotation.segmentIds.join("-")}-${index}`}><b>{annotation.type}</b><span>{annotation.source} · {annotation.segmentIds.join(", ")}</span><p>{annotation.note}</p></article>) : <p>No provider or deterministic annotation was available.</p>}</div></div>
+    <small className="intelligence-method">Preprocessing: {intelligence.preprocessing.status}. Opening protection retains {intelligence.prefixProtectionMs} ms before VAD-detected speech without modifying the original audio. Dialect labels are probabilistic linguistic interpretations and never claims about nationality, ethnicity, identity, or origin.</small>
   </section>;
 }
 
