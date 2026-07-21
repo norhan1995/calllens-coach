@@ -17,7 +17,7 @@ CallLens Coach transforms customer conversations into actionable coaching using 
 
 ### Production Application
 
-https://calllens-coach.vercel.app/
+[https://calllens-coach.vercel.app/](https://calllens-coach-umber.vercel.app/)
 
 ---
 
