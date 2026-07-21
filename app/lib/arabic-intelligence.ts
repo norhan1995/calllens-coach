@@ -3,6 +3,24 @@ import { z } from "zod";
 export const transcriptionModeSchema = z.enum(["standard", "arabic_intelligence"]);
 export type TranscriptionMode = z.infer<typeof transcriptionModeSchema>;
 
+export const transcriptionDialectHintSchema = z.enum([
+  "Auto Detect",
+  "Egyptian Arabic",
+  "Gulf Arabic",
+  "Modern Standard Arabic",
+  "Levantine Arabic",
+  "English",
+  "Mixed Arabic and English",
+]);
+export type TranscriptionDialectHint = z.infer<typeof transcriptionDialectHintSchema>;
+
+export const ARABIC_VAD_SETTINGS = {
+  type: "server_vad",
+  prefix_padding_ms: 1_000,
+  silence_duration_ms: 350,
+  threshold: 0.4,
+} as const;
+
 export const vocabularyCategorySchema = z.enum([
   "medicine",
   "doctor",
@@ -73,6 +91,52 @@ export const DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS: TranscriptionWorkspaceSet
   vocabulary: DEFAULT_WORKSPACE_VOCABULARY,
 });
 
+type FormFieldWriter = { set(name: string, value: string): void };
+type FormFieldReader = { get(name: string): unknown };
+
+export function appendTranscriptionRequestSettings(
+  form: FormFieldWriter,
+  settingsValue: unknown,
+  dialectValue: unknown,
+) {
+  const settings = transcriptionWorkspaceSettingsSchema.parse(settingsValue);
+  const selectedDialect = transcriptionDialectHintSchema.parse(dialectValue);
+  form.set("transcriptionMode", settings.mode);
+  form.set("selectedDialect", selectedDialect);
+  form.set("preprocessAudio", String(settings.preprocessModerateAudio));
+  form.set("workspaceVocabulary", JSON.stringify(settings.vocabulary));
+}
+
+export function parseTranscriptionRequestSettings(form: FormFieldReader) {
+  const mode = transcriptionModeSchema.safeParse(form.get("transcriptionMode") ?? "standard");
+  if (!mode.success) return { success: false as const, code: "invalid_mode" as const };
+
+  const selectedDialect = transcriptionDialectHintSchema.safeParse(form.get("selectedDialect") ?? "Auto Detect");
+  if (!selectedDialect.success) return { success: false as const, code: "invalid_dialect" as const };
+
+  let vocabulary = DEFAULT_WORKSPACE_VOCABULARY;
+  if (mode.data === "arabic_intelligence") {
+    const serializedVocabulary = form.get("workspaceVocabulary");
+    if (typeof serializedVocabulary === "string" && serializedVocabulary.trim()) {
+      try {
+        vocabulary = workspaceVocabularySchema.parse(JSON.parse(serializedVocabulary));
+      } catch {
+        return { success: false as const, code: "invalid_vocabulary" as const };
+      }
+    }
+  }
+
+  return {
+    success: true as const,
+    data: {
+      mode: mode.data,
+      selectedDialect: mode.data === "arabic_intelligence" ? selectedDialect.data : "Auto Detect" as const,
+      preprocessingRequested: mode.data === "arabic_intelligence" && form.get("preprocessAudio") === "true",
+      vocabulary,
+    },
+  };
+}
+
 export const transcriptSnapshotSegmentSchema = z.object({
   id: z.string().min(1).refine((value) => value.trim().length > 0, "Segment ID cannot be blank."),
   speakerId: z.string().min(1).refine((value) => value.trim().length > 0, "Speaker ID cannot be blank."),
@@ -94,6 +158,17 @@ export const vocabularyChangeSchema = z.object({
   preferredScript: preferredScriptSchema,
   confidence: z.number().min(0).max(1),
   evidence: z.string().trim().min(1).max(400),
+}).strict();
+
+export const segmentCorrectionSchema = z.object({
+  segmentId: z.string().trim().min(1),
+  originalText: z.string().min(1).max(5_000),
+  correctedText: z.string().min(1).max(5_000),
+  confidence: z.number().min(0).max(1),
+  category: z.enum(["punctuation", "spacing", "approved_vocabulary", "obvious_recognition"]),
+  evidenceSegmentIds: z.array(z.string().trim().min(1)).min(1).max(5),
+  explanation: z.string().trim().min(1).max(400),
+  source: z.literal("ai_inference"),
 }).strict();
 
 export const dialectFamilySchema = z.enum([
@@ -174,8 +249,10 @@ export const arabicIntelligenceMetadataSchema = z.object({
   feature: z.literal("Arabic Transcription Intelligence"),
   mode: z.literal("arabic_intelligence"),
   languageHint: z.literal("ar"),
+  requestedDialect: transcriptionDialectHintSchema.default("Auto Detect"),
   prefixProtectionMs: z.number().int().min(0).max(2_000),
   vocabularyChanges: z.array(vocabularyChangeSchema).max(1_000),
+  transcriptCorrections: z.array(segmentCorrectionSchema).max(1_000).default([]),
   dialectObservations: z.array(dialectObservationSchema).max(100),
   codeSwitchingObservations: z.array(codeSwitchingObservationSchema).max(100),
   annotations: z.array(uncertaintyAnnotationSchema).max(1_000),
@@ -184,6 +261,7 @@ export const arabicIntelligenceMetadataSchema = z.object({
 }).strict();
 
 export const arabicEnrichmentResponseSchema = z.object({
+  segmentCorrections: z.array(segmentCorrectionSchema).max(1_000),
   dialectObservations: z.array(dialectObservationSchema).max(100),
   codeSwitchingObservations: z.array(codeSwitchingObservationSchema).max(100),
   annotations: z.array(uncertaintyAnnotationSchema).max(1_000),
@@ -191,6 +269,7 @@ export const arabicEnrichmentResponseSchema = z.object({
 
 export type TranscriptSnapshot = z.infer<typeof transcriptSnapshotSchema>;
 export type VocabularyChange = z.infer<typeof vocabularyChangeSchema>;
+export type SegmentCorrection = z.infer<typeof segmentCorrectionSchema>;
 export type DialectObservation = z.infer<typeof dialectObservationSchema>;
 export type CodeSwitchingObservation = z.infer<typeof codeSwitchingObservationSchema>;
 export type UncertaintyAnnotation = z.infer<typeof uncertaintyAnnotationSchema>;
@@ -277,6 +356,108 @@ export function enhanceTranscriptWithVocabulary(input: TranscriptInput, vocabula
   return {
     enhancedTranscript: createTranscriptSnapshot({ text, segments }),
     vocabularyChanges: changes,
+  };
+}
+
+function lexicalTokens(value: string) {
+  return value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+function lexicalContent(value: string) {
+  return lexicalTokens(value).join("");
+}
+
+function latinTerms(value: string) {
+  return value.match(/[\p{Script=Latin}\p{N}][\p{Script=Latin}\p{N}-]*/gu) ?? [];
+}
+
+function preservesMostWords(original: string, corrected: string) {
+  const originalTokens = lexicalTokens(original);
+  const correctedTokens = lexicalTokens(corrected);
+  if (originalTokens.length === 0) return false;
+  const remaining = [...correctedTokens];
+  let retained = 0;
+  for (const token of originalTokens) {
+    const index = remaining.indexOf(token);
+    if (index < 0) continue;
+    retained += 1;
+    remaining.splice(index, 1);
+  }
+  const minimumRetention = originalTokens.length <= 3 ? 2 / 3 : 0.75;
+  return retained / originalTokens.length >= minimumRetention
+    && Math.abs(correctedTokens.length - originalTokens.length) <= Math.max(2, Math.ceil(originalTokens.length * 0.2));
+}
+
+function isApprovedVocabularyCorrection(
+  correction: SegmentCorrection,
+  vocabulary: WorkspaceVocabulary,
+) {
+  const original = correction.originalText.toLocaleLowerCase();
+  const corrected = correction.correctedText.toLocaleLowerCase();
+  return vocabulary.entries.some((entry) => {
+    const originalHasConfiguredForm = [entry.canonicalForm, ...entry.aliases]
+      .some((form) => original.includes(form.toLocaleLowerCase()));
+    return originalHasConfiguredForm && corrected.includes(entry.canonicalForm.toLocaleLowerCase());
+  });
+}
+
+export function applyHighConfidenceSegmentCorrections(
+  rawValue: unknown,
+  baselineEnhancedValue: unknown,
+  correctionsValue: unknown,
+  vocabularyValue: unknown,
+  selectedDialectValue: unknown,
+) {
+  const raw = transcriptSnapshotSchema.parse(rawValue);
+  const baselineEnhanced = transcriptSnapshotSchema.parse(baselineEnhancedValue);
+  const corrections = z.array(segmentCorrectionSchema).max(1_000).parse(correctionsValue);
+  const vocabulary = workspaceVocabularySchema.parse(vocabularyValue);
+  const selectedDialect = transcriptionDialectHintSchema.parse(selectedDialectValue);
+  const rawById = new Map(raw.segments.map((segment) => [segment.id, segment]));
+  const baselineById = new Map(baselineEnhanced.segments.map((segment) => [segment.id, segment]));
+  const validIds = new Set(raw.segments.map((segment) => segment.id));
+  const accepted: SegmentCorrection[] = [];
+  const acceptedSegmentIds = new Set<string>();
+
+  for (const correction of corrections) {
+    const rawSegment = rawById.get(correction.segmentId);
+    const baselineSegment = baselineById.get(correction.segmentId);
+    if (!rawSegment || !baselineSegment || correction.originalText !== rawSegment.text) continue;
+    if (acceptedSegmentIds.has(correction.segmentId)) continue;
+    if (!correction.evidenceSegmentIds.includes(correction.segmentId)) continue;
+    if (correction.evidenceSegmentIds.some((id) => !validIds.has(id))) continue;
+    if (correction.correctedText.trim().length === 0 || correction.correctedText === correction.originalText) continue;
+    if (correction.confidence < 0.95) continue;
+    if (correction.category === "obvious_recognition" && (correction.confidence < 0.98 || selectedDialect !== "Egyptian Arabic")) continue;
+    if (Math.abs(correction.correctedText.length - correction.originalText.length) / correction.originalText.length > 0.35) continue;
+    if (!preservesMostWords(correction.originalText, correction.correctedText)) continue;
+
+    const originalLatin = latinTerms(correction.originalText);
+    if (originalLatin.some((term) => !correction.correctedText.includes(term))) continue;
+
+    const baselineCanonical = vocabulary.entries
+      .filter((entry) => baselineSegment.text.toLocaleLowerCase().includes(entry.canonicalForm.toLocaleLowerCase()))
+      .map((entry) => entry.canonicalForm);
+    if (baselineCanonical.some((term) => !correction.correctedText.includes(term))) continue;
+
+    if (["punctuation", "spacing"].includes(correction.category)
+      && lexicalContent(correction.originalText) !== lexicalContent(correction.correctedText)) continue;
+    if (correction.category === "approved_vocabulary" && !isApprovedVocabularyCorrection(correction, vocabulary)) continue;
+
+    accepted.push(correction);
+    acceptedSegmentIds.add(correction.segmentId);
+  }
+
+  const acceptedById = new Map(accepted.map((correction) => [correction.segmentId, correction.correctedText]));
+  const correctedInput: TranscriptInput = {
+    text: raw.segments.map((segment) => acceptedById.get(segment.id) ?? segment.text).join(" "),
+    segments: raw.segments.map((segment) => ({ ...segment, text: acceptedById.get(segment.id) ?? segment.text })),
+  };
+  const enhanced = enhanceTranscriptWithVocabulary(correctedInput, vocabulary);
+  return {
+    enhancedTranscript: enhanced.enhancedTranscript,
+    transcriptCorrections: accepted,
+    vocabularyChanges: enhanced.vocabularyChanges,
   };
 }
 
@@ -410,16 +591,26 @@ export function detectTranscriptAnnotations(input: TranscriptInput): Uncertainty
   return annotations;
 }
 
-export function validateEnrichmentReferences(value: unknown, segmentIds: Iterable<string>) {
+export function validateEnrichmentReferences(value: unknown, segmentIds: Iterable<string> | TranscriptSnapshot) {
   const parsed = arabicEnrichmentResponseSchema.safeParse(value);
   if (!parsed.success) return { success: false as const, reason: "schema" };
-  const valid = new Set(segmentIds);
+  const transcript = transcriptSnapshotSchema.safeParse(segmentIds);
+  const valid = new Set(transcript.success
+    ? transcript.data.segments.map((segment) => segment.id)
+    : segmentIds as Iterable<string>);
   const referenced = [
+    ...parsed.data.segmentCorrections.flatMap((item) => [item.segmentId, ...item.evidenceSegmentIds]),
     ...parsed.data.dialectObservations.flatMap((item) => [...item.segmentIds, ...item.evidence.map((evidence) => evidence.segmentId)]),
     ...parsed.data.codeSwitchingObservations.flatMap((item) => item.segmentIds),
     ...parsed.data.annotations.flatMap((item) => item.segmentIds),
   ];
   if (referenced.some((id) => !valid.has(id))) return { success: false as const, reason: "segment_reference" };
+  if (transcript.success) {
+    const rawById = new Map(transcript.data.segments.map((segment) => [segment.id, segment.text]));
+    if (parsed.data.segmentCorrections.some((item) => rawById.get(item.segmentId) !== item.originalText)) {
+      return { success: false as const, reason: "original_text" };
+    }
+  }
   return { success: true as const, data: parsed.data };
 }
 
@@ -452,7 +643,7 @@ function safeOptionalEnrichmentReason(error: unknown) {
 
 export async function resolveOptionalArabicEnrichment(
   deterministic: ArabicIntelligenceMetadata,
-  segmentIds: Iterable<string>,
+  segmentIds: Iterable<string> | TranscriptSnapshot,
   model: string,
   operation: () => Promise<ArabicEnrichmentResponse>,
 ): Promise<ArabicIntelligenceMetadata> {
@@ -463,6 +654,7 @@ export async function resolveOptionalArabicEnrichment(
     return arabicIntelligenceMetadataSchema.parse({
       ...deterministic,
       ...mergeEnrichment(deterministic, validated.data),
+      transcriptCorrections: validated.data.segmentCorrections,
       enrichment: {
         status: "completed",
         apiCalls: 1,
@@ -487,8 +679,10 @@ export function createDeterministicArabicIntelligence(
   raw: TranscriptInput,
   vocabularyValue: unknown,
   preprocessing: PreprocessingDiagnostic,
+  selectedDialectValue: unknown = "Auto Detect",
 ) {
   const vocabulary = workspaceVocabularySchema.parse(vocabularyValue);
+  const requestedDialect = transcriptionDialectHintSchema.parse(selectedDialectValue);
   const rawTranscript = createTranscriptSnapshot(raw);
   const enhanced = enhanceTranscriptWithVocabulary(raw, vocabulary);
   const enhancedInput: TranscriptInput = enhanced.enhancedTranscript;
@@ -499,8 +693,10 @@ export function createDeterministicArabicIntelligence(
       feature: "Arabic Transcription Intelligence",
       mode: "arabic_intelligence",
       languageHint: "ar",
-      prefixProtectionMs: 600,
+      requestedDialect,
+      prefixProtectionMs: ARABIC_VAD_SETTINGS.prefix_padding_ms,
       vocabularyChanges: enhanced.vocabularyChanges,
+      transcriptCorrections: [],
       dialectObservations: detectDialectObservations(enhancedInput),
       codeSwitchingObservations: detectCodeSwitchingObservations(enhancedInput, vocabulary),
       annotations: detectTranscriptAnnotations(rawTranscript),

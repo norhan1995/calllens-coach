@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ARABIC_VAD_SETTINGS,
+  DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS,
   DEFAULT_WORKSPACE_VOCABULARY,
+  appendTranscriptionRequestSettings,
+  applyHighConfidenceSegmentCorrections,
   createDeterministicArabicIntelligence,
   detectCodeSwitchingObservations,
   detectDialectObservations,
   detectTranscriptAnnotations,
   enhanceTranscriptWithVocabulary,
   preprocessingDiagnosticSchema,
+  parseTranscriptionRequestSettings,
   resolveOptionalArabicEnrichment,
   validateEnrichmentReferences,
   workspaceVocabularySchema,
@@ -143,7 +148,8 @@ test("13. speech beginning at time zero is not trimmed or shifted by local logic
   const result = applyArabicIntelligence(base, deterministic.rawTranscript, deterministic.enhancedTranscript, deterministic.metadata);
   assert.equal(result.segments[0].start, 0);
   assert.equal(result.rawTranscript?.segments[0].start, 0);
-  assert.equal(result.arabicIntelligence?.prefixProtectionMs, 600);
+  assert.equal(result.arabicIntelligence?.prefixProtectionMs, 1_000);
+  assert.equal(ARABIC_VAD_SETTINGS.threshold, 0.4);
 });
 
 test("14. overlapping speakers stay separate and receive deterministic overlap evidence", () => {
@@ -181,6 +187,7 @@ test("17. every enrichment observation must reference a real provider segment", 
   const raw = transcript([{ id: "valid-1", speakerId: "A", start: 0, end: 2, text: "أنا عايز معاد" }]);
   const deterministic = createDeterministicArabicIntelligence(raw, DEFAULT_WORKSPACE_VOCABULARY, NO_PREPROCESSING);
   const valid = {
+    segmentCorrections: [],
     dialectObservations: deterministic.metadata.dialectObservations,
     codeSwitchingObservations: deterministic.metadata.codeSwitchingObservations,
     annotations: deterministic.metadata.annotations,
@@ -189,6 +196,18 @@ test("17. every enrichment observation must reference a real provider segment", 
   const invalid = structuredClone(valid);
   invalid.dialectObservations[0].segmentIds = ["missing"];
   assert.equal(validateEnrichmentReferences(invalid, ["valid-1"]).success, false);
+  const mismatchedCorrection = structuredClone(valid);
+  mismatchedCorrection.segmentCorrections.push({
+    segmentId: "valid-1",
+    originalText: "Fictional text that does not match raw evidence.",
+    correctedText: "Fictional correction.",
+    confidence: 0.99,
+    category: "obvious_recognition",
+    evidenceSegmentIds: ["valid-1"],
+    explanation: "This must fail exact raw evidence validation.",
+    source: "ai_inference",
+  });
+  assert.equal(validateEnrichmentReferences(mismatchedCorrection, deterministic.rawTranscript).success, false);
 });
 
 test("18. enrichment failure returns deterministic fallback without losing transcription", async () => {
@@ -225,4 +244,85 @@ test("20. TXT and JSON exports retain their original fields and add optional int
   assert.ok(exported.rawTranscript);
   assert.ok(exported.enhancedTranscript);
   assert.match(serializeTranscriptTxt(enhanced), /Metformin/);
+});
+
+test("21. Egyptian selection survives the exact client-to-server request settings round trip", () => {
+  const form = new FormData();
+  appendTranscriptionRequestSettings(form, {
+    ...DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS,
+    mode: "arabic_intelligence",
+  }, "Egyptian Arabic");
+  const parsed = parseTranscriptionRequestSettings(form);
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  assert.equal(parsed.data.mode, "arabic_intelligence");
+  assert.equal(parsed.data.selectedDialect, "Egyptian Arabic");
+
+  const automatic = new FormData();
+  appendTranscriptionRequestSettings(automatic, {
+    ...DEFAULT_TRANSCRIPTION_WORKSPACE_SETTINGS,
+    mode: "arabic_intelligence",
+  }, "Auto Detect");
+  const automaticParsed = parseTranscriptionRequestSettings(automatic);
+  assert.equal(automaticParsed.success, true);
+  if (!automaticParsed.success) return;
+  assert.equal(automaticParsed.data.selectedDialect, "Auto Detect");
+  assert.notEqual(automaticParsed.data.selectedDialect, parsed.data.selectedDialect);
+});
+
+test("22. high-confidence Egyptian correction changes only the enhanced representation", () => {
+  const raw = transcript([{ id: "eg-correction-1", speakerId: "A", start: 0, end: 3, text: "أنا عايز المعاد بكره مع Metformin" }]);
+  const baseline = enhanceTranscriptWithVocabulary(raw, DEFAULT_WORKSPACE_VOCABULARY).enhancedTranscript;
+  const corrected = applyHighConfidenceSegmentCorrections(raw, baseline, [{
+    segmentId: "eg-correction-1",
+    originalText: raw.segments[0].text,
+    correctedText: "أنا عايز المعاد بكرة مع Metformin",
+    confidence: 0.99,
+    category: "obvious_recognition",
+    evidenceSegmentIds: ["eg-correction-1"],
+    explanation: "Fictional high-confidence Egyptian recognition correction.",
+    source: "ai_inference",
+  }], DEFAULT_WORKSPACE_VOCABULARY, "Egyptian Arabic");
+  assert.equal(raw.segments[0].text, "أنا عايز المعاد بكره مع Metformin");
+  assert.equal(corrected.enhancedTranscript.segments[0].text, "أنا عايز المعاد بكرة مع Metformin");
+  assert.equal(corrected.enhancedTranscript.segments[0].id, raw.segments[0].id);
+  assert.equal(corrected.enhancedTranscript.segments[0].start, raw.segments[0].start);
+  assert.equal(corrected.enhancedTranscript.segments[0].end, raw.segments[0].end);
+  assert.equal(corrected.enhancedTranscript.segments[0].speakerId, raw.segments[0].speakerId);
+  assert.match(corrected.enhancedTranscript.text, /Metformin/);
+  assert.equal(corrected.transcriptCorrections.length, 1);
+});
+
+test("23. uncertain corrections leave Egyptian wording and raw evidence unchanged", () => {
+  const raw = transcript([{ id: "eg-uncertain-1", speakerId: "A", start: 0, end: 3, text: "معلش أنا عايز معاد دلوقتي" }]);
+  const baseline = enhanceTranscriptWithVocabulary(raw, DEFAULT_WORKSPACE_VOCABULARY).enhancedTranscript;
+  const corrected = applyHighConfidenceSegmentCorrections(raw, baseline, [{
+    segmentId: "eg-uncertain-1",
+    originalText: raw.segments[0].text,
+    correctedText: "من فضلك أريد موعدا الآن",
+    confidence: 0.7,
+    category: "obvious_recognition",
+    evidenceSegmentIds: ["eg-uncertain-1"],
+    explanation: "Fictional low-confidence rewrite that must be rejected.",
+    source: "ai_inference",
+  }], DEFAULT_WORKSPACE_VOCABULARY, "Egyptian Arabic");
+  assert.equal(corrected.transcriptCorrections.length, 0);
+  assert.equal(corrected.enhancedTranscript.text, raw.text);
+});
+
+test("24. Auto Detect cannot authorize an Egyptian recognition rewrite", () => {
+  const raw = transcript([{ id: "auto-1", speakerId: "A", start: 0, end: 2, text: "أنا عايز المعاد بكره" }]);
+  const baseline = enhanceTranscriptWithVocabulary(raw, DEFAULT_WORKSPACE_VOCABULARY).enhancedTranscript;
+  const corrected = applyHighConfidenceSegmentCorrections(raw, baseline, [{
+    segmentId: "auto-1",
+    originalText: raw.segments[0].text,
+    correctedText: "أنا عايز المعاد بكرة",
+    confidence: 0.99,
+    category: "obvious_recognition",
+    evidenceSegmentIds: ["auto-1"],
+    explanation: "Fictional correction requires an explicit Egyptian hint.",
+    source: "ai_inference",
+  }], DEFAULT_WORKSPACE_VOCABULARY, "Auto Detect");
+  assert.equal(corrected.transcriptCorrections.length, 0);
+  assert.equal(corrected.enhancedTranscript.text, raw.text);
 });

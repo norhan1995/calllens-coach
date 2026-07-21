@@ -97,6 +97,8 @@ test("Arabic Intelligence is an isolated opt-in beside the unchanged Standard mo
   assert.match(html, /TRANSCRIPTION MODE/);
   assert.match(html, />Standard</);
   assert.match(html, />Arabic Intelligence</);
+  assert.match(html, />Egyptian Arabic</);
+  assert.match(html, /Choose a dialect when known/);
   assert.match(html, /Standard preserves the stable English flow/);
   assert.doesNotMatch(html, /OpenAI transcription response diagnostics/);
 });

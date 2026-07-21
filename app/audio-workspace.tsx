@@ -18,6 +18,7 @@ import {
   type DiarizedTranscriptionResult,
   type SpeakerMappingEntry,
 } from "./lib/audio-domain";
+import { appendTranscriptionRequestSettings } from "./lib/arabic-intelligence.ts";
 import { isRtlContent } from "./lib/domain";
 import { SAMPLE_AUDIO_MAPPING, SAMPLE_AUDIO_METRICS, SAMPLE_AUDIO_TRANSCRIPTION } from "./lib/sample-audio-analysis";
 import { useCallLensState } from "./state";
@@ -145,9 +146,7 @@ export function AudioWorkspace({
     try {
       const form = new FormData();
       form.set("audio", file);
-      form.set("transcriptionMode", settings.transcription.mode);
-      form.set("preprocessAudio", String(settings.transcription.preprocessModerateAudio));
-      form.set("workspaceVocabulary", JSON.stringify(settings.transcription.vocabulary));
+      appendTranscriptionRequestSettings(form, settings.transcription, state.metadata.selectedDialect);
       setWorkflow("transcribing");
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -231,10 +230,10 @@ export function AudioWorkspace({
     {state.transcription && state.audioMetrics && <>
       <SpeakerMapping result={state.transcription} mapping={state.speakerMapping} metrics={state.audioMetrics} onChange={updateMapping} />
       <TranscriptViewer result={state.transcription} audioUrl={objectUrl} defaultAutoScroll={settings.audio.autoScrollTranscript} onEdit={updateSegment} onUndo={undoSegment} />
-      <AudioInsights result={state.transcription} metrics={state.audioMetrics} audioUrl={objectUrl} />
       {state.transcription.arabicIntelligence
         ? <ArabicIntelligencePanel result={state.transcription} />
-        : <div className="panel future-insights"><div><span className="eyebrow">FUTURE VALIDATED AI INSIGHTS</span><h3>Transcript is prepared for segment-level enrichment</h3></div><span>AI-inferred emotion</span><span>Dialect interpretation</span><span>Code-switching observation</span><small>No inference is shown until a future live AI response passes schema and evidence validation.</small></div>}
+        : <div className="panel future-insights"><div><span className="eyebrow">STANDARD TRANSCRIPTION</span><h3>No Arabic Intelligence was requested for this transcript</h3></div><span>Stable English workflow</span><span>Speaker diarization</span><span>Timestamped evidence</span><small>Select Arabic Intelligence before transcribing when evidence-linked dialect interpretation is needed.</small></div>}
+      <AudioInsights result={state.transcription} metrics={state.audioMetrics} audioUrl={objectUrl} />
       <button className="analyze-button" onClick={continueToAnalysis} disabled={continuing}>{continuing ? "Starting QA analysis…" : "Continue to QA analysis"}</button>
     </>}
   </div>;
@@ -311,14 +310,18 @@ function TranscriptViewer({ result, audioUrl, defaultAutoScroll, onEdit, onUndo,
   </section>;
 }
 
+function confidenceLabel(confidence: number) {
+  return confidence >= 0.8 ? "High" : confidence >= 0.55 ? "Medium" : "Low";
+}
+
 function ArabicIntelligencePanel({ result }: { result: DiarizedTranscriptionResult }) {
   const intelligence = result.arabicIntelligence!;
   return <section className="panel arabic-intelligence-panel"><div className="panel-head"><div><span className="eyebrow accent">ARABIC TRANSCRIPTION INTELLIGENCE</span><h2>Evidence-linked linguistic observations</h2></div><span className="intelligence-status">{intelligence.enrichment.status === "completed" ? "Structured enrichment complete" : "Safe deterministic fallback"}</span></div>
-    <div className="intelligence-summary"><span><b>{intelligence.vocabularyChanges.length}</b> vocabulary normalizations</span><span><b>{intelligence.dialectObservations.length}</b> speaker interpretations</span><span><b>{intelligence.codeSwitchingObservations.length}</b> code-switching observations</span><span><b>{intelligence.annotations.length}</b> evidence annotations</span></div>
-    <div className="intelligence-grid"><div><small>DIALECT INTERPRETATION</small>{intelligence.dialectObservations.map((observation) => <article key={observation.speakerId}><b>Speaker {observation.speakerId}: {observation.dialectFamily}</b><span>{Math.round(observation.confidence * 100)}% confidence · {observation.segmentIds.join(", ")}</span><p>{observation.notes}</p></article>)}</div>
+    <div className="intelligence-summary"><span><b>{intelligence.transcriptCorrections.length}</b> high-confidence corrections</span><span><b>{intelligence.vocabularyChanges.length}</b> vocabulary normalizations</span><span><b>{intelligence.dialectObservations.length}</b> speaker interpretations</span><span><b>{intelligence.codeSwitchingObservations.length}</b> code-switching observations</span></div>
+    <div className="intelligence-grid"><div><small>DIALECT INTERPRETATION · HINT: {intelligence.requestedDialect}</small>{intelligence.dialectObservations.length ? intelligence.dialectObservations.map((observation) => <article key={observation.speakerId}><b>Likely dialect: {observation.dialectFamily}</b><span>Speaker {observation.speakerId} · Confidence: {confidenceLabel(observation.confidence)} ({Math.round(observation.confidence * 100)}%)</span><span>Evidence: {observation.segmentIds.map((id) => `Segment ${id}`).join(", ")}</span><p>{observation.notes}</p></article>) : <article><b>Likely dialect: Uncertain</b><span>Confidence: Low</span><p>No validated speaker-level linguistic evidence was returned.</p></article>}</div>
       <div><small>CODE-SWITCHING OBSERVATION</small>{intelligence.codeSwitchingObservations.length ? intelligence.codeSwitchingObservations.map((observation, index) => <article key={`${observation.segmentIds.join("-")}-${index}`}><b>{observation.languages.join(" ↔ ")}</b><span>{observation.segmentIds.join(", ")}</span><p>{observation.explanation}</p></article>) : <p>No evidence-supported Arabic-English switch was detected.</p>}</div>
       <div><small>UNCERTAINTY AND NON-SPEECH</small>{intelligence.annotations.length ? intelligence.annotations.map((annotation, index) => <article key={`${annotation.type}-${annotation.segmentIds.join("-")}-${index}`}><b>{annotation.type}</b><span>{annotation.source} · {annotation.segmentIds.join(", ")}</span><p>{annotation.note}</p></article>) : <p>No provider or deterministic annotation was available.</p>}</div></div>
-    <small className="intelligence-method">Preprocessing: {intelligence.preprocessing.status}. Opening protection retains {intelligence.prefixProtectionMs} ms before VAD-detected speech without modifying the original audio. Dialect labels are probabilistic linguistic interpretations and never claims about nationality, ethnicity, identity, or origin.</small>
+    <small className="intelligence-method">Preprocessing: {intelligence.preprocessing.status}. Opening protection retains {intelligence.prefixProtectionMs} ms before VAD-detected speech without modifying timestamps or original audio. The diarized provider accepts an Arabic language hint and VAD controls, but not prompt or vocabulary guidance; the selected dialect is consumed only by conservative enrichment. Dialect labels are probabilistic linguistic interpretations and never claims about nationality, ethnicity, identity, or origin.</small>
   </section>;
 }
 
