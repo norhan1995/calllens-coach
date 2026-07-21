@@ -44,9 +44,7 @@ export default defineConfig(async () => {
   const deploymentPlugins = nitroPreset
     ? [
         (await import("@tailwindcss/vite")).default(),
-        (await import("nitro/vite")).nitro({
-          output: { dir: ".output" },
-        }),
+        (await import("nitro/vite")).nitro(),
       ]
     : [
         sites(),
