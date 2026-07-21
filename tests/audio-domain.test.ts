@@ -4,6 +4,7 @@ import {
   DEFAULT_AUDIO_METRIC_SETTINGS,
   DEFAULT_MAX_AUDIO_BYTES,
   applySpeakerMapping,
+  audioAnalysisSettingsSchema,
   audioMetricsSchema,
   calculateAudioMetrics,
   countWords,
@@ -80,6 +81,30 @@ test("provider normalization keeps provider IDs, timestamps, labels, and text wi
   assert.equal(result.segments[0].speakerId, "A");
   assert.equal(result.segments[0].role, "unknown");
   assert.equal(result.duration, 2);
+});
+
+test("live diarized_json without top-level duration derives duration from provider timestamps", () => {
+  const result = normalizeProviderDiarizedTranscription({
+    text: "Thank you for calling. I need help with a duplicate charge.",
+    segments: [
+      { type: "transcript.text.segment", id: "seg_0", speaker: "A", start: 0, end: 1.95, text: " Thank you for calling." },
+      { type: "transcript.text.segment", id: "seg_1", speaker: "B", start: 2.6, end: 5.75, text: " I need help with a duplicate charge." },
+    ],
+    usage: { type: "tokens", total_tokens: 100, input_tokens: 40, output_tokens: 60 },
+  }, { model: "gpt-4o-transcribe-diarize", createdAt: "2026-07-21T00:00:00.000Z" });
+  assert.equal(result.duration, 5.75);
+  assert.deepEqual(result.segments.map((segment) => segment.id), ["seg_0", "seg_1"]);
+  assert.deepEqual(result.segments.map((segment) => [segment.start, segment.end]), [[0, 1.95], [2.6, 5.75]]);
+  assert.deepEqual(result.segments.map((segment) => segment.speakerId), ["A", "B"]);
+});
+
+test("provider duration is preserved when it includes trailing silence", () => {
+  const result = normalizeProviderDiarizedTranscription({
+    text: "Hello there",
+    duration: 3,
+    segments: [{ id: "seg_0", speaker: "A", start: 0, end: 2, text: "Hello there" }],
+  }, { model: "test", createdAt: "2026-07-21T00:00:00.000Z" });
+  assert.equal(result.duration, 3);
 });
 
 test("malformed provider responses cannot create fake transcript results", () => {
@@ -166,6 +191,17 @@ test("editing preserves provider text, marks the segment, recalculates fillers, 
 
 test("metrics always satisfy their strict output schema", () => {
   assert.equal(audioMetricsSchema.safeParse(calculateAudioMetrics(FIXTURE)).success, true);
+});
+
+test("persisted transcript controls pass strict settings validation without changing metrics", () => {
+  const settings = {
+    ...DEFAULT_AUDIO_METRIC_SETTINGS,
+    playbackSpeed: 1.25 as const,
+    autoScrollTranscript: true,
+  };
+  assert.equal(audioAnalysisSettingsSchema.safeParse(settings).success, true);
+  assert.deepEqual(calculateAudioMetrics(FIXTURE, settings), calculateAudioMetrics(FIXTURE));
+  assert.equal(audioAnalysisSettingsSchema.safeParse({ ...settings, unexpected: true }).success, false);
 });
 
 test("object URL replacement and removal revoke prior temporary URLs", () => {

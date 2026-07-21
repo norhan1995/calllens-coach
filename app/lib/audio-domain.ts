@@ -83,6 +83,13 @@ export const audioMetricSettingsSchema = z.object({
 
 export type AudioMetricSettings = z.infer<typeof audioMetricSettingsSchema>;
 
+export const audioAnalysisSettingsSchema = audioMetricSettingsSchema.safeExtend({
+  playbackSpeed: z.union([z.literal(0.75), z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
+  autoScrollTranscript: z.boolean(),
+});
+
+export type AudioAnalysisSettings = z.infer<typeof audioAnalysisSettingsSchema>;
+
 export const DEFAULT_AUDIO_METRIC_SETTINGS: AudioMetricSettings = {
   shortPauseSeconds: 1.5,
   deadAirSeconds: 3,
@@ -200,18 +207,32 @@ type RawDiarizedTranscription = {
   duration?: unknown;
   language?: unknown;
   segments?: unknown;
+  task?: unknown;
+  usage?: unknown;
 };
+
+export class InvalidDiarizedTranscriptionError extends Error {
+  readonly issues: string[];
+
+  constructor(issues: string[]) {
+    super("invalid_diarized_transcription");
+    this.name = "InvalidDiarizedTranscriptionError";
+    this.issues = issues;
+  }
+}
 
 export function normalizeProviderDiarizedTranscription(
   value: RawDiarizedTranscription,
   options: { model: string; createdAt?: string },
 ): DiarizedTranscriptionResult {
-  if (!Array.isArray(value.segments)) throw new Error("invalid_diarized_transcription");
-  const segments = value.segments.map((candidate, index) => {
+  if (!Array.isArray(value.segments)) {
+    throw new InvalidDiarizedTranscriptionError(["segments: Expected an array of diarized transcript segments."]);
+  }
+  const segments = value.segments.map((candidate) => {
     const raw = candidate as RawDiarizedSegment;
     const originalText = typeof raw.text === "string" ? raw.text.trim() : "";
     return {
-      id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : `segment-${String(index + 1).padStart(4, "0")}`,
+      id: typeof raw.id === "string" ? raw.id.trim() : "",
       speakerId: typeof raw.speaker === "string" && raw.speaker.trim() ? raw.speaker.trim() : "",
       role: "unknown" as const,
       start: raw.start,
@@ -222,16 +243,28 @@ export function normalizeProviderDiarizedTranscription(
       isEdited: false,
     };
   });
+  const latestProviderSegmentEnd = segments.reduce(
+    (latest, segment) => typeof segment.end === "number" && Number.isFinite(segment.end) ? Math.max(latest, segment.end) : latest,
+    0,
+  );
+  const providerDuration = typeof value.duration === "number" && Number.isFinite(value.duration) && value.duration > 0
+    ? value.duration
+    : null;
   const result = {
     text: typeof value.text === "string" ? value.text.trim() : "",
-    duration: value.duration,
+    // Live diarized_json responses can omit the documented top-level duration.
+    // Segment end times are provider timestamps, so their maximum is the safest exact fallback.
+    duration: Math.max(providerDuration ?? 0, latestProviderSegmentEnd),
     segments,
     detectedLanguage: typeof value.language === "string" && value.language.trim() ? value.language.trim() : null,
     model: options.model,
     createdAt: options.createdAt ?? new Date().toISOString(),
   };
   const parsed = diarizedTranscriptionResultSchema.safeParse(result);
-  if (!parsed.success) throw new Error("invalid_diarized_transcription");
+  if (!parsed.success) {
+    throw new InvalidDiarizedTranscriptionError(parsed.error.issues.map((issue) =>
+      `${issue.path.length ? issue.path.join(".") : "response"}: ${issue.message}`));
+  }
   return parsed.data;
 }
 
@@ -348,10 +381,21 @@ function findFillers(segment: AudioTranscriptSegment, dictionary: string[]): z.i
 
 export function calculateAudioMetrics(
   result: DiarizedTranscriptionResult,
-  settings: AudioMetricSettings = DEFAULT_AUDIO_METRIC_SETTINGS,
+  settings: AudioMetricSettings | AudioAnalysisSettings = DEFAULT_AUDIO_METRIC_SETTINGS,
 ): AudioMetrics {
   const validatedResult = diarizedTranscriptionResultSchema.parse(result);
-  const validatedSettings = audioMetricSettingsSchema.parse(settings);
+  const persistedSettings = audioAnalysisSettingsSchema.safeParse(settings);
+  const validatedSettings = persistedSettings.success
+    ? audioMetricSettingsSchema.parse({
+        shortPauseSeconds: persistedSettings.data.shortPauseSeconds,
+        deadAirSeconds: persistedSettings.data.deadAirSeconds,
+        severeDeadAirSeconds: persistedSettings.data.severeDeadAirSeconds,
+        minimumInterruptionOverlapSeconds: persistedSettings.data.minimumInterruptionOverlapSeconds,
+        englishFillerWords: persistedSettings.data.englishFillerWords,
+        egyptianFillerWords: persistedSettings.data.egyptianFillerWords,
+        gulfFillerWords: persistedSettings.data.gulfFillerWords,
+      })
+    : audioMetricSettingsSchema.parse(settings);
   const segments = [...validatedResult.segments].sort((a, b) => a.start - b.start || a.end - b.end);
   const speakingBySpeaker = new Map<string, { seconds: number; words: number }>();
   const speakingByRole = new Map<AudioTranscriptSegment["role"], { seconds: number; words: number }>();

@@ -1,7 +1,14 @@
 import { getLiveAIConfiguration, getOpenAIClient, missingKeyResponse, runOnce, safeApiErrorResponse } from "../../lib/openai-server";
-import { normalizeProviderDiarizedTranscription, validateAudioFile } from "../../lib/audio-domain";
+import { InvalidDiarizedTranscriptionError, normalizeProviderDiarizedTranscription, validateAudioFile } from "../../lib/audio-domain";
 
 export const runtime = "nodejs";
+
+function logRawTranscriptionResponse(value: unknown) {
+  if (process.env.NODE_ENV === "production" && process.env.CALLLENS_LOG_RAW_TRANSCRIPTION !== "true") return;
+  const serialized = JSON.stringify(value, (key, entry) =>
+    /api.?key|authorization/i.test(key) ? "[REDACTED]" : entry, 2);
+  console.info("[CallLens] Raw OpenAI diarized transcription response:\n", serialized);
+}
 
 export async function POST(request: Request) {
   const configuration = getLiveAIConfiguration();
@@ -32,6 +39,7 @@ export async function POST(request: Request) {
         response_format: "diarized_json",
         chunking_strategy: "auto",
       });
+      logRawTranscriptionResponse(transcription);
       return normalizeProviderDiarizedTranscription(transcription, { model: configuration.transcriptionModel });
     });
     if (result.duplicate) {
@@ -39,7 +47,10 @@ export async function POST(request: Request) {
     }
     return Response.json({ transcription: result.value });
   } catch (error) {
-    if (error instanceof Error && error.message === "invalid_diarized_transcription") {
+    if (error instanceof InvalidDiarizedTranscriptionError || (error instanceof Error && error.message === "invalid_diarized_transcription")) {
+      if (error instanceof InvalidDiarizedTranscriptionError) {
+        console.error("[CallLens] Rejected OpenAI diarized transcription:", error.issues);
+      }
       return Response.json(
         { error: { code: "invalid_transcription", message: "OpenAI returned an invalid diarized transcript. Nothing was displayed." } },
         { status: 502 },

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { DEFAULT_SCORECARDS, mapAnalysisState, type AnalysisResponse, type PrivacySummary, type QAScorecard, type ReportModel, type RolePlayResponse } from "./lib/domain";
 import {
   DEFAULT_AUDIO_METRIC_SETTINGS,
-  type AudioMetricSettings,
+  type AudioAnalysisSettings as PersistedAudioAnalysisSettings,
   type AudioMetrics,
   type DiarizedTranscriptionResult,
   type SpeakerMappingEntry,
@@ -17,10 +17,7 @@ export type CallMetadata = {
   selectedDialect: "Auto Detect" | "Egyptian Arabic" | "Gulf Arabic" | "Modern Standard Arabic" | "Levantine Arabic" | "English" | "Mixed Arabic and English";
 };
 
-export type AudioAnalysisSettings = AudioMetricSettings & {
-  playbackSpeed: 0.75 | 1 | 1.25 | 1.5 | 2;
-  autoScrollTranscript: boolean;
-};
+export type AudioAnalysisSettings = PersistedAudioAnalysisSettings;
 export type DemoSettings = { workspaceName: string; defaultLanguage: CallMetadata["selectedLanguage"]; maskSensitiveInformation: boolean; selectedScorecardId: string; scorecards: QAScorecard[]; audio: AudioAnalysisSettings };
 export type CallLensState = { transcript: string; metadata: CallMetadata; transcription: DiarizedTranscriptionResult | null; speakerMapping: SpeakerMappingEntry[]; audioMetrics: AudioMetrics | null; analysis: AnalysisResponse | null; privacy: PrivacySummary | null; coachingPlan: AnalysisResponse["sevenDayCoachingPlan"]; rolePlayResult: RolePlayResponse | null; reportData: ReportModel | null; analysisSource: "live" | "example" | null };
 type StateContextValue = { state: CallLensState; settings: DemoSettings; updateState: (patch: Partial<CallLensState>) => void; updateMetadata: (patch: Partial<CallMetadata>) => void; updateSettings: (settings: DemoSettings) => void; setAnalysisResult: (analysis: AnalysisResponse, privacy: PrivacySummary) => void };
