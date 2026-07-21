@@ -195,3 +195,122 @@
   .landing .hero-product{padding:18px}
   .landing .hero-product:before{display:none}
 }
+
+/* Final readability polish: body and helper typography only. */
+:root{
+  --readable-body-size:15px;
+  --readable-body-leading:1.65;
+  --readable-arabic-size:17px;
+  --readable-arabic-leading:1.75;
+}
+
+/* Analysis results */
+.results-page .summary-card>p,
+.results-page .insight p,
+.results-page .dialect-grid p,
+.results-page .timeline-detail p,
+.results-page .phrase-grid p,
+.results-page .reconstruction-row p{
+  font-size:var(--readable-body-size);
+  line-height:var(--readable-body-leading);
+}
+.results-page .evidence-line,
+.results-page .phrase-grid em,
+.results-page .reconstruction-row em{
+  font-size:13px;
+  line-height:1.6;
+}
+.results-page .dialect-grid b{
+  line-height:1.6;
+}
+.results-page .timeline-detail blockquote{
+  font-size:16px;
+  line-height:1.7;
+}
+.results-page .reconstruction .panel-head p{
+  font-size:14px;
+  line-height:1.6;
+}
+.results-page .phrase-grid [dir="rtl"],
+.results-page .dialect-grid [dir="rtl"] b,
+.results-page .reconstruction-row [dir="rtl"]{
+  font-size:var(--readable-arabic-size);
+  line-height:var(--readable-arabic-leading);
+}
+
+/* Coaching plan */
+.coach-layout .plan-card p,
+.coach-layout .coach-priority p,
+.coach-layout .followup p{
+  font-size:var(--readable-body-size);
+  line-height:var(--readable-body-leading);
+}
+.coach-layout .coach-priority b,
+.coach-layout .practice b{
+  font-size:13px;
+  line-height:1.5;
+}
+.coach-layout .followup p[dir="auto"]{
+  line-height:var(--readable-arabic-leading);
+}
+
+/* Practice role-play */
+.practice-page .page-intro>p,
+.practice-page .roleplay-ready>p,
+.practice-page .roleplay-preview p,
+.practice-page .chat-message p,
+.practice-page .feedback-panel>p,
+.practice-page .feedback-panel li,
+.practice-page .feedback-panel .practice p,
+.practice-page .category-feedback p{
+  font-size:var(--readable-body-size);
+  line-height:var(--readable-body-leading);
+}
+.practice-page .chat-composer textarea{
+  font-size:var(--readable-body-size);
+  line-height:1.6;
+}
+.practice-page .feedback-panel h3{
+  font-size:16px;
+  line-height:1.45;
+}
+.practice-page .category-feedback b,
+.practice-page .feedback-panel .practice b{
+  font-size:13px;
+  line-height:1.5;
+}
+.practice-page .chat-messages[dir="rtl"] .chat-message p,
+.practice-page .chat-composer textarea[dir="rtl"],
+.practice-page .feedback-panel [dir="rtl"]{
+  font-size:var(--readable-arabic-size);
+  line-height:var(--readable-arabic-leading);
+}
+
+/* Settings */
+.settings-layout .setting-row b,
+.settings-layout .audio-setting-grid label,
+.settings-layout .filler-settings label,
+.settings-layout .weight-list label{
+  font-size:13px;
+  line-height:1.5;
+}
+.settings-layout .setting-row small,
+.settings-layout .audio-settings>.panel-head>small,
+.settings-layout .privacy-notice,
+.settings-layout .inline-error{
+  font-size:12px;
+  line-height:1.55;
+}
+.settings-layout .audio-setting-grid em,
+.settings-layout .weight-list em{
+  font-size:11px;
+  line-height:1.5;
+}
+.settings-layout .filler-settings textarea{
+  font-size:14px;
+  line-height:1.6;
+}
+.settings-layout .filler-settings textarea[dir="rtl"]{
+  font-size:16px;
+  line-height:1.75;
+}
