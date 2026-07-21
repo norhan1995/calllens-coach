@@ -25,7 +25,7 @@ CallLens Coach transforms customer conversations into actionable coaching using 
 
 Watch the complete Build Week demonstration:
 
-(https://youtu.be/Ij-Z8AZtzSo)
+[(https://youtu.be/Ij-Z8AZtzSo)](https://youtu.be/G8hNkHM30N8)
 
 ---
 
