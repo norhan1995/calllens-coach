@@ -4,12 +4,13 @@
 
 CallLens Coach transforms customer conversations into actionable coaching using AI transcription, Arabic Intelligence, automated QA scoring, analytics, and personalized coaching.
 
+> **Repository note:** This is the public showcase repository for CallLens Coach. Active production engineering continues in a separate private repository.
+
 ![Landing Page](docs/images/landing.png)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-97.7%25-blue)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--5.6-green)
 ![Codex](https://img.shields.io/badge/Built%20with-Codex-black)
-![License](https://img.shields.io/badge/License-MIT-success)
 
 ---
 
@@ -17,7 +18,7 @@ CallLens Coach transforms customer conversations into actionable coaching using 
 
 ### Production Application
 
-[https://calllens-coach.vercel.app/](https://calllens-coach-umber.vercel.app/)
+[https://calllens-coach-umber.vercel.app/](https://calllens-coach-umber.vercel.app/)
 
 ---
 
@@ -25,7 +26,7 @@ CallLens Coach transforms customer conversations into actionable coaching using 
 
 Watch the complete Build Week demonstration:
 
-[(https://youtu.be/Ij-Z8AZtzSo)](https://youtu.be/G8hNkHM30N8)
+[Watch the CallLens Coach demo](https://youtu.be/G8hNkHM30N8)
 
 ---
 
@@ -209,7 +210,7 @@ Codex was used to:
 - Accelerate feature implementation
 - Support testing and deployment workflows
 
-Codex significantly accelerated development while helping maintain a production-ready application.
+Codex accelerated development while supporting structured implementation, testing, debugging, and review.
 
 ---
 
@@ -346,6 +347,3 @@ https://github.com/norhan1995/calllens-coach
 
 ---
 
-# 📄 License
-
-MIT License
