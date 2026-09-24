@@ -345,7 +345,7 @@ By combining transcription, Arabic Intelligence, automated QA, personalized coac
 Built for **OpenAI Build Week 2026**
 
 Portfolio:
-https://norhan-rifaie-portfolio-t6s0kg.v2.appdeploy.ai/
+https://norhanrifaie.vercel.app
 
 GitHub:
 https://github.com/norhan1995/calllens-coach
