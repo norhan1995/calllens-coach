@@ -1,5 +1,7 @@
 # 🎧 CallLens Coach
 
+[![CI](https://github.com/norhan1995/calllens-coach/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/norhan1995/calllens-coach/actions/workflows/ci.yml)
+
 > **AI-powered, evidence-based quality assurance and coaching for modern contact centers.**
 
 CallLens Coach transforms customer conversations into actionable coaching using AI transcription, Arabic Intelligence, automated QA scoring, analytics, and personalized coaching.
